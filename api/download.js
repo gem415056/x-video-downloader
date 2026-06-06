@@ -13,68 +13,52 @@ export default async function handler(req, res) {
   }
 
   try {
+    // 1. 트위터/X URL에서 Tweet ID 추출
     const tweetIdMatch = url.match(/\/status\/(\d+)/);
     if (!tweetIdMatch) {
       return res.status(400).json({ error: "올바른 트위터/X 링크가 아닙니다." });
     }
     const tweetId = tweetIdMatch[1];
 
-    const twitterApiUrl = `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&lang=ko`;
-    const response = await fetch(twitterApiUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    });
+    // 2. 오픈소스 트위터 우회 프록시인 vxTwitter API 호출 (IP 차단 우회용)
+    const vxApiUrl = `https://api.vxtwitter.com/status/${tweetId}`;
+    const response = await fetch(vxApiUrl);
 
     if (!response.ok) {
-      return res.status(404).json({ error: "트윗 데이터를 가져오지 못했습니다. 삭제되었거나 비공개 트윗일 수 있습니다." });
+      return res.status(404).json({ error: "트윗 정보를 가져오는 데 실패했습니다. (vxTwitter 서버 통신 오류)" });
     }
 
     const data = await response.json();
     
-    // 민감한 콘텐츠(Tombstone)로 제한된 트윗인지 확인
-    if (data.tombstone) {
-      return res.status(400).json({ 
-        error: "이 트윗은 민감한 콘텐츠(성인물/폭력성 등)로 제한되어 비로그인 상태에서 정보를 가져올 수 없습니다." 
-      });
-    }
+    // 3. 미디어 데이터 추출
+    const mediaList = data.media_extended || [];
+    const videoMedia = mediaList.find(m => m.type === 'video' || m.type === 'gif');
 
-    const mediaList = data.mediaDetails || [];
-    
-    // 모든 미디어 리스트를 돌며 일반 비디오('video') 또는 움짤('animated_gif')을 찾음
-    const videoMedia = mediaList.find(m => m.type === 'video' || m.type === 'animated_gif');
-    
     if (!videoMedia) {
-      // 디버깅을 위해 발견된 다른 미디어 타입 정보를 에러 메시지에 포함시킵니다.
-      const foundTypes = mediaList.map(m => m.type).join(', ') || '없음';
       return res.status(400).json({ 
-        error: `이 트윗에서 동영상을 찾을 수 없습니다. (감지된 미디어 종류: ${foundTypes})` 
+        error: "트윗 분석은 성공했으나, 동영상 파일을 찾을 수 없습니다. (사진이나 텍스트만 있는 트윗일 수 있습니다.)" 
       });
     }
 
-    const thumbnail = videoMedia.media_url_https;
-    const variants = videoMedia.video_info?.variants || [];
+    const thumbnail = videoMedia.thumbnail_url || "";
+    const videoUrl = videoMedia.url;
     
-    // MP4 포맷 추출 및 고화질 정렬
-    const mp4Variants = variants
-      .filter(v => v.content_type === 'video/mp4')
-      .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-
-    if (mp4Variants.length === 0) {
-      return res.status(400).json({ error: "다운로드 가능한 MP4 포맷 동영상이 없습니다." });
+    // 4. 화질 정보 추출
+    let resolution = "최고 화질";
+    if (videoMedia.size && videoMedia.size.width && videoMedia.size.height) {
+      resolution = `${videoMedia.size.width}x${videoMedia.size.height}`;
+    } else {
+      const resMatch = videoUrl.match(/\/vid\/(\d+x\d+)\//);
+      if (resMatch) resolution = resMatch[1];
     }
-
-    const highestQuality = mp4Variants[0];
-    const resMatch = highestQuality.url.match(/\/vid\/(\d+x\d+)\//);
-    const resolution = resMatch ? resMatch[1] : "최고 화질";
 
     return res.status(200).json({
       thumbnail,
-      videoUrl: highestQuality.url,
+      videoUrl,
       resolution
     });
 
   } catch (error) {
-    return res.status(500).json({ error: "서버 오류: " + error.message });
+    return res.status(500).json({ error: "서버 오류가 발생했습니다: " + error.message });
   }
-            }
+}
