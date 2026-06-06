@@ -7,15 +7,18 @@
   <title>X Downloader</title>
   <style>
     :root {
-      /* 1. 라이트 모드 기준 색상 적용 */
       --bg-color: #ffffff;
       --text-color: #333333;
-      --card-bg: #d9f3ff; /* 6. 카드 배경색 */
-      --card-border: #366593; /* 6. 카드 테두리색 */
-      --primary-color: #7293bc; /* 3,4. 메인 테마색 */
-      --button-text: #f3faff; /* 4. 다운로드 버튼 글자색 */
-      --input-bg: #f5f5f5; /* 5. 입력창 내부 배경 (아주 연한 회색) */
-      --input-border: #a0a0a0; /* 5. 입력창 테두리 (중간 회색) */
+      --primary-color: #7293bc; /* 메인 테마색 */
+      --button-text: #f3faff; /* 다운로드 버튼 글자색 */
+      --input-bg: #f5f5f5; /* 입력창 배경 */
+      --input-border: #a0a0a0; /* 입력창 테두리 */
+      
+      /* 변경된 카드창 색상 변수 */
+      --card-bg: #e6f4f1; /* 카드 배경색 */
+      --card-border: #7293BC; /* 카드 테두리색 */
+      --color-success: #ba8093; /* 완료 텍스트 색상 */
+      --color-loading: #23496d; /* 다운로드중 텍스트 색상 */
     }
     body {
       background-color: var(--bg-color);
@@ -27,13 +30,11 @@
       flex-direction: column;
       align-items: center;
     }
-    /* 2. 입력창 전체 영역을 아래로 조정 */
     .container {
       width: 100%;
       max-width: 500px;
-      margin-top: 40px; /* 상단 여백 추가 */
+      margin-top: 40px;
     }
-    /* 3. 좌상단 타이틀 설정 */
     .header {
       color: var(--primary-color);
       font-size: 26px;
@@ -41,20 +42,18 @@
       margin: 0 0 20px 0;
       text-align: left;
     }
-    /* 9. 입력창과 지우기 버튼을 감싸는 래퍼 */
     .input-wrapper {
       position: relative;
       width: 100%;
     }
-    /* 5. 입력창 스타일 변경 */
     textarea {
       width: 100%;
       min-height: 120px;
       background-color: var(--input-bg);
       color: var(--text-color);
       border: 1px solid var(--input-border);
-      border-radius: 12px; /* 가장자리 둥글게 */
-      padding: 14px 44px 14px 14px; /* 우측에 지우기 버튼 공간 마련 */
+      border-radius: 12px;
+      padding: 14px 44px 14px 14px;
       box-sizing: border-box;
       font-size: 14px;
       resize: none;
@@ -64,7 +63,6 @@
     textarea:focus {
       border-color: var(--primary-color);
     }
-    /* 9. 휴지통 지우기 버튼 스타일 */
     .clear-btn {
       position: absolute;
       top: 12px;
@@ -77,23 +75,24 @@
       align-items: center;
       justify-content: center;
       border-radius: 50%;
-      transition: background-color 0.2s;
     }
     .clear-btn:active {
       background-color: rgba(114, 147, 188, 0.1);
     }
-    /* 4. 다운로드 버튼 스타일 변경 */
+    /* 다운로드 버튼 크기 및 패딩 축소, 중앙 정렬 */
     button#downloadBtn {
-      width: 100%;
+      display: block;
+      width: fit-content; /* 텍스트 크기에 맞게 조절 */
+      margin: 18px auto 0 auto; /* 중앙 정렬 */
       background-color: var(--primary-color);
       color: var(--button-text);
       border: none;
-      border-radius: 25px;
-      padding: 14px;
-      font-size: 16px;
+      border-radius: 20px;
+      padding: 10px 24px; /* 가로세로 패딩 축소 */
+      font-size: 15px;
       font-weight: bold;
-      margin-top: 16px;
       cursor: pointer;
+      transition: opacity 0.2s;
     }
     button#downloadBtn:active {
       opacity: 0.9;
@@ -109,7 +108,7 @@
       flex-direction: column;
       gap: 12px;
     }
-    /* 6. 카드 디자인 변경 */
+    /* 카드 디자인 변경 */
     .card {
       background-color: var(--card-bg);
       border: 1px solid var(--card-border);
@@ -132,48 +131,33 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
     }
-    /* 8. 카드 글자색 일괄 조정 및 상태별 컬러 변경 */
     .status {
       font-size: 14px;
       font-weight: bold;
-      color: #555555; /* 카드 내부의 기본 글자색 (진회색) */
+      color: #555555;
     }
     .status.waiting { 
-      color: #666666; /* 대기중 진회색 */
+      color: #666666; 
     } 
+    /* 다운로드 중 텍스트색 조정 */
     .status.loading { 
-      color: #005dab; /* 8. 다운로드 중인 것 파란색 */
+      color: var(--color-loading); 
     } 
+    /* 완료 텍스트색 조정 */
     .status.success { 
-      color: #e66d9b; /* 8. 완료된 것 분홍색 */
+      color: var(--color-success); 
     } 
     .status.error { 
       color: #f4212e; 
     }
-    
     .resolution {
       font-size: 12px;
-      color: #555555; /* 8. 진회색 */
-    }
-    /* 7. 게이지 디자인 변경 (회색 트랙에서 #366593으로 차오름) */
-    .progress-track {
-      width: 100%;
-      height: 6px;
-      background-color: #e0e0e0; /* 7. 트랙 배경 회색 */
-      border-radius: 3px;
-      overflow: hidden;
-      margin-top: 6px;
-    }
-    .progress-bar {
-      height: 100%;
-      width: 0%;
-      background-color: #366593; /* 7. 차오르는 게이지색 */
-      transition: width 0.1s linear;
+      color: #555555;
     }
     .retry-btn {
-      background-color: #e66d9b;
+      background-color: var(--color-success);
       color: white;
       border: none;
       border-radius: 6px;
@@ -188,14 +172,11 @@
 <body>
 
   <div class="container">
-    <!-- 3. 좌상단 타이틀 -->
     <div class="header">X Downloader</div>
     
-    <!-- 9. 입력 영역 및 전체 지우기 버튼 -->
     <div class="input-wrapper">
       <textarea id="linksInput" placeholder="여기에 X(트위터) 링크를 줄바꿈(Enter)으로 구분하여 입력하세요 (최대 40개)"></textarea>
       <button class="clear-btn" onclick="clearInput()" title="전체 지우기">
-        <!-- 깔끔한 테마 매칭 SVG 휴지통 아이콘 -->
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7293bc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="3 6 5 6 21 6"></polyline>
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -216,11 +197,10 @@
       this.style.height = (this.scrollHeight) + 'px';
     });
 
-    // 9. 입력창 전체 지우기 함수
     function clearInput() {
       const linksInput = document.getElementById('linksInput');
       linksInput.value = '';
-      linksInput.style.height = '120px'; // 최소 기본 높이로 복원
+      linksInput.style.height = '120px';
     }
 
     async function startQueue() {
@@ -248,7 +228,6 @@
           <div class="card-info" id="info-${index}">
             <div class="status waiting" id="status-${index}">[대기중] 순서를 기다리는 중...</div>
             <div class="resolution" id="res-${index}">-</div>
-            <div class="progress-track"><div class="progress-bar" id="bar-${index}"></div></div>
           </div>
         `;
         queueList.appendChild(card);
@@ -265,7 +244,6 @@
 
     async function processDownload(url, index) {
       const statusText = document.getElementById(`status-${index}`);
-      const progressBar = document.getElementById(`bar-${index}`);
       const resText = document.getElementById(`res-${index}`);
       const thumbDiv = document.getElementById(`thumb-${index}`);
 
@@ -292,38 +270,27 @@
       } catch (error) {
         statusText.innerText = `[오류] ${error.message}`;
         statusText.className = "status error";
-        progressBar.style.width = "0%";
       }
     }
 
     async function downloadFileHelper(proxiedUrl, filename, index) {
       const statusText = document.getElementById(`status-${index}`);
-      const progressBar = document.getElementById(`bar-${index}`);
       const cardInfo = document.getElementById(`info-${index}`);
 
       try {
         const fileResponse = await fetch(proxiedUrl);
         if (!fileResponse.ok) throw new Error("네트워크 연결 시간 초과 또는 서버 응답 실패");
 
-        const contentLength = fileResponse.headers.get('content-length');
-        const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
-        
         const reader = fileResponse.body.getReader();
-        let receivedBytes = 0;
         const chunks = [];
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          
           chunks.push(value);
-          receivedBytes += value.length;
-
-          if (totalBytes > 0) {
-            const percent = Math.round((receivedBytes / totalBytes) * 100);
-            progressBar.style.width = `${percent}%`;
-            statusText.innerText = `[다운로드중] 파일 받는 중... (${percent}%)`;
-          }
+          
+          // 바를 없앴으므로 간단한 텍스트 카운터로 작동 중임을 표시해 줍니다.
+          statusText.innerText = "[다운로드중] 파일 가져오는 중...";
         }
 
         const blob = new Blob(chunks, { type: 'video/mp4' });
@@ -345,7 +312,6 @@
         
         statusText.innerText = "[시간초과] 직접 다운로드 실패";
         statusText.className = "status error";
-        progressBar.style.width = "0%";
 
         const btnId = `retry-btn-${index}`;
         if (!document.getElementById(btnId)) {
