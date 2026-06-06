@@ -94,6 +94,7 @@
       font-size: 15px;
       font-weight: bold;
       cursor: pointer;
+      transition: background-color 0.3s ease;
     }
     button#downloadBtn:active {
       opacity: 0.9;
@@ -123,6 +124,7 @@
       box-sizing: border-box;
       text-align: center;
       position: relative;
+      transition: opacity 0.3s ease;
     }
     .thumb-box {
       width: 100%;
@@ -165,9 +167,16 @@
       background-color: var(--badge-loading);
       color: var(--badge-text);
     } 
-    .status.success { 
+    /* 저장 대기 상태 배지 (분홍색 활성화) */
+    .status.ready { 
       background-color: var(--badge-success);
       color: var(--badge-text);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    } 
+    /* 다운 완료 상태 배지 (연회색 비활성화) */
+    .status.success { 
+      background-color: #e0e0e0;
+      color: #888888;
     } 
     .status.error { 
       background-color: #f4212e;
@@ -214,12 +223,9 @@
       }
     }
 
-    // 모바일 클립보드 및 키보드 자동 줄바꿈 100% 감지 로직
     tx.addEventListener('input', function() {
       adjustHeight();
-      
       const val = tx.value;
-      // 트위터/X 주소 끝부분에 공백이나 줄바꿈이 없으면 강제로 줄바꿈을 즉시 추가
       const twitterRegex = /https?:\/\/(twitter|x)\.com\/[a-zA-Z0-9_]+\/status\/\d+[^ \n]*$/;
       if (twitterRegex.test(val)) {
         tx.value = val + '\n';
@@ -233,12 +239,22 @@
       linksInput.value = '';
       linksInput.style.height = '42px';
       linksInput.style.overflowY = 'hidden';
+      resetButton();
     }
 
-    // 전역 대기 큐 배열
-    let downloadQueue = [];
+    // 일괄 다운로드 대상들을 보관하는 전역 큐 배열
+    let downloadJobs = [];
 
     async function startQueue() {
+      const downloadBtn = document.getElementById('downloadBtn');
+
+      // [기획 수정] 만약 버튼 상태가 'save-all' 클래스를 가지고 있다면 일괄 다운로드 실행
+      if (downloadBtn.classList.contains('save-all')) {
+        runBulkDownload();
+        return;
+      }
+
+      // 그렇지 않다면 일반적인 링크 분석 절차 시작
       const input = document.getElementById('linksInput').value;
       const urls = input.split('\n')
                         .map(url => url.trim())
@@ -250,13 +266,15 @@
       }
 
       const queueList = document.getElementById('queueList');
-      const downloadBtn = document.getElementById('downloadBtn');
       
       queueList.innerHTML = '';
       downloadBtn.disabled = true;
-      downloadQueue = [];
+      downloadBtn.innerText = "분석 중...";
+      downloadBtn.style.backgroundColor = "#cccccc";
+      
+      downloadJobs = []; // 다운로드 직무 초기화
 
-      // 1단계: 초기 링크 개수만큼 placeholder 카드 미리 생성
+      // 1단계: 초기 Placeholder 카드 세팅
       urls.forEach((url, index) => {
         const card = document.createElement('div');
         card.className = 'card';
@@ -267,18 +285,22 @@
           <span class="status waiting" id="status-${index}">대기중</span>
         `;
         queueList.appendChild(card);
-        downloadQueue.push({ url, index, isPlaceholder: true });
       });
 
-      // 2단계: 순차 처리 엔진 가동
-      for (let i = 0; i < downloadQueue.length; i++) {
-        const item = downloadQueue[i];
-        if (item.isPlaceholder) {
-          await processLink(item.url, item.index);
-        }
+      // 2단계: 순차적 백엔드 분석 시작
+      for (let i = 0; i < urls.length; i++) {
+        await processLink(urls[i], i);
       }
 
-      downloadBtn.disabled = false;
+      // 3단계: 분석 완료 후 다운로드 시작 버튼을 핑크빛 [모두 저장하기] 상태로 변환
+      if (downloadJobs.length > 0) {
+        downloadBtn.disabled = false;
+        downloadBtn.innerText = "모두 저장하기";
+        downloadBtn.style.backgroundColor = "var(--badge-success)"; // 성공 핑크색상으로 변경
+        downloadBtn.classList.add('save-all');
+      } else {
+        resetButton();
+      }
     }
 
     async function processLink(url, originalIndex) {
@@ -303,17 +325,14 @@
           throw new Error("영상을 찾을 수 없음");
         }
 
-        // 발견된 첫 번째 영상으로 원래의 카드 슬롯 업데이트
-        const firstVideo = videos[0];
-        if (firstVideo.thumbnail) {
-          thumbDiv.innerHTML = `<img src="${firstVideo.thumbnail}" alt="썸네일">`;
-        }
-        resText.innerText = firstVideo.resolution;
-        
-        const firstProxiedUrl = `/api/proxy?url=${encodeURIComponent(firstVideo.videoUrl)}`;
-        await triggerIframeDownload(firstProxiedUrl, originalCard, statusText);
+        const tweetIdMatch = url.match(/\/status\/(\d+)/);
+        const tweetId = tweetIdMatch ? tweetIdMatch[1] : Date.now();
 
-        // 한 트윗 안에 동영상이 여러 개(2개 이상) 있는 경우 카드 동적 추가 생성
+        // 첫 번째 동영상 셋업
+        const firstVideo = videos[0];
+        updateCardToReady(originalCard, statusText, resText, thumbDiv, firstVideo, tweetId, 1);
+
+        // 한 트윗 내에 동영상이 여러 개일 경우 그리드 공간에 카드 추가 복제
         if (videos.length > 1) {
           let lastInsertedCard = originalCard;
           for (let k = 1; k < videos.length; k++) {
@@ -324,26 +343,23 @@
             extraCard.className = 'card';
             extraCard.id = `card-${extraIndex}`;
             extraCard.innerHTML = `
-              <div class="thumb-box" id="thumb-${extraIndex}">
-                <img src="${extraVideo.thumbnail}" alt="썸네일">
-              </div>
-              <div class="resolution" id="res-${extraIndex}">${extraVideo.resolution}</div>
-              <span class="status waiting" id="status-${extraIndex}">다운중</span>
+              <div class="thumb-box" id="thumb-${extraIndex}"></div>
+              <div class="resolution" id="res-${extraIndex}">-</div>
+              <span class="status waiting" id="status-${extraIndex}">대기중</span>
             `;
             
-            // 그리드 레이아웃상 원래 카드 바로 뒤에 차례대로 삽입합니다.
             lastInsertedCard.after(extraCard);
             lastInsertedCard = extraCard;
 
-            // 추가 카드 다운로드 실행 및 1.5초 안정화 딜레이 대기
-            const extraProxiedUrl = `/api/proxy?url=${encodeURIComponent(extraVideo.videoUrl)}`;
-            await triggerIframeDownload(extraProxiedUrl, extraCard, document.getElementById(`status-${extraIndex}`));
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            const extraThumb = document.getElementById(`thumb-${extraIndex}`);
+            const extraRes = document.getElementById(`res-${extraIndex}`);
+            const extraStatus = document.getElementById(`status-${extraIndex}`);
+            
+            updateCardToReady(extraCard, extraStatus, extraRes, extraThumb, extraVideo, tweetId, k + 1);
           }
-        } else {
-          // 영상이 1개인 경우 일반적인 순서 안정을 위해 1.5초 대기
-          await new Promise(resolve => setTimeout(resolve, 1500));
         }
+        
+        await new Promise(resolve => setTimeout(resolve, 300));
 
       } catch (error) {
         statusText.innerText = "오류 (클릭)";
@@ -352,27 +368,87 @@
       }
     }
 
-    // 모바일 브라우저의 다운로드 누락을 방지하는 숨겨진 Iframe 무한 다운로드 공법
-    async function triggerIframeDownload(proxiedUrl, cardElement, statusElement) {
-      statusElement.innerText = "다운중";
-      statusElement.className = "status loading";
+    // 각 카드를 분석 후 다운로드 준비 단계로 만드는 결합 제어 함수
+    function updateCardToReady(cardElement, statusElement, resElement, thumbElement, videoData, tweetId, videoNum) {
+      if (videoData.thumbnail) {
+        thumbElement.innerHTML = `<img src="${videoData.thumbnail}" alt="썸네일">`;
+      }
+      resElement.innerText = videoData.resolution;
+      
+      statusElement.innerText = "저장";
+      statusElement.className = "status ready";
+      cardElement.style.cursor = "pointer";
 
-      // 보이지 않는 가상 iframe 생성 후 바디에 탑재하여 강제 다운로드 작동
+      // 고유 파일명 명명 규칙 적용 (예: X_12948194_1.mp4)
+      const filename = `X_${tweetId}_${videoNum}.mp4`;
+      const proxiedUrl = `/api/proxy?url=${encodeURIComponent(videoData.videoUrl)}&filename=${encodeURIComponent(filename)}`;
+
+      // 개별 카드 클릭 시 작동하는 단독 수동 다운로드 바인딩 (백업 안심 장치)
+      cardElement.onclick = function() {
+        triggerSingleDownload(cardElement, statusElement, proxiedUrl);
+      };
+
+      // 전체 일괄 저장을 위한 내부 대기 큐에 정보 주입
+      downloadJobs.push({
+        cardElement,
+        statusElement,
+        proxiedUrl
+      });
+    }
+
+    // [핵심 기능] 0.15초 시간차를 두고 순차적 무중단 일괄 다운로드 엔진 가동
+    function runBulkDownload() {
+      const downloadBtn = document.getElementById('downloadBtn');
+      
+      downloadBtn.disabled = true;
+      downloadBtn.innerText = "저장 중...";
+      downloadBtn.style.backgroundColor = "#cccccc";
+
+      // 150ms 미세 간격을 두어 기기 과부하 및 다운로드 유실 완벽 제어
+      downloadJobs.forEach((job, index) => {
+        setTimeout(() => {
+          triggerIframeDownload(job.proxiedUrl, job.cardElement, job.statusElement);
+        }, index * 150); 
+      });
+
+      // 일괄 다운로드 명령이 모두 들어간 뒤 시스템 초기화
+      const totalDelay = (downloadJobs.length * 150) + 1000;
+      setTimeout(() => {
+        resetButton();
+      }, totalDelay);
+    }
+
+    // 개별 카드를 수동으로 눌렀을 때, 일괄 작업 목록에서 제외하고 다운로드하는 조율 함수
+    function triggerSingleDownload(cardElement, statusElement, proxiedUrl) {
+      triggerIframeDownload(proxiedUrl, cardElement, statusElement);
+      // 일괄 다운로드 목록에서 제거하여 중복 저장 차단
+      downloadJobs = downloadQueue.filter(job => job.cardElement !== cardElement);
+    }
+
+    // 최종 Iframe 다운로드 연동 장치
+    function triggerIframeDownload(proxiedUrl, cardElement, statusElement) {
+      statusElement.innerText = "완료";
+      statusElement.className = "status success";
+      cardElement.onclick = null; // 중복 다운로드 원천 방지
+      cardElement.style.opacity = "0.5"; // 사용된 카드는 흐리게 처리하여 구분
+
       const iframe = document.createElement('iframe');
       iframe.style.display = 'none';
       iframe.src = proxiedUrl;
       document.body.appendChild(iframe);
-
-      // 브라우저의 다운로드 트리거 완료 시점 설정 및 클릭 재다운로드 맵핑
+      
       setTimeout(() => {
-        statusElement.innerText = "완료!";
-        statusElement.className = "status success";
-        cardElement.style.cursor = "pointer";
-        cardElement.onclick = function() {
-          triggerIframeDownload(proxiedUrl, cardElement, statusElement);
-        };
         document.body.removeChild(iframe);
-      }, 1000);
+      }, 3000);
+    }
+
+    function resetButton() {
+      const downloadBtn = document.getElementById('downloadBtn');
+      downloadBtn.disabled = false;
+      downloadBtn.innerText = "동영상 다운로드 시작";
+      downloadBtn.style.backgroundColor = "var(--primary-color)";
+      downloadBtn.classList.remove('save-all');
+      downloadJobs = [];
     }
   </script>
 </body>
