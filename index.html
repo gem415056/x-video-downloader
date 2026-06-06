@@ -111,6 +111,7 @@
       gap: 10px; 
       width: 100%;
     }
+    /* 카드창 디자인 (패딩 8px, 요소 간격 8px 설정) */
     .card {
       background-color: var(--input-bg);
       border: 1px solid var(--input-border);
@@ -137,19 +138,17 @@
       height: 100%;
       object-fit: cover;
     }
+    /* 불필요한 고정 높이를 제거하여 패딩 여백과 일치하도록 촘촘하게 가공 */
     .resolution {
       font-size: 10px;
       color: #666666;
       font-weight: bold;
-      white-space: normal; 
-      word-break: break-all;
+      white-space: nowrap;
       overflow: hidden;
-      display: -webkit-box;
-      -webkit-line-clamp: 2; 
-      -webkit-box-orient: vertical;
+      text-overflow: ellipsis;
       width: 100%;
-      height: 24px; 
-      line-height: 12px;
+      margin: 0;
+      padding: 0;
     }
     .status {
       font-size: 10px;
@@ -295,14 +294,12 @@
       try {
         const response = await fetch(`/api/download?url=${encodeURIComponent(url)}&cb=${Date.now()}`);
         
-        // 데이터 누수가 없도록 무조건 텍스트로 안전하게 1회만 변환해 가져옵니다.
         const rawText = await response.text(); 
         
         let result;
         try {
           result = JSON.parse(rawText);
         } catch (jsonErr) {
-          // HTML 태그를 모두 도려내고 알맹이 글자만 정제합니다.
           const cleanText = rawText.replace(/<[^>]*>/g, '').trim().substring(0, 20);
           throw new Error(`해독 실패: ${cleanText || "빈 응답"}`);
         }
@@ -367,18 +364,17 @@
       statusElement.className = "status ready";
       cardElement.style.cursor = "pointer";
 
+      // 100% 명시적으로 파일명 주입
       const filename = `X_${tweetId}_${videoNum}.mp4`;
       const proxiedUrl = `/api/proxy?url=${encodeURIComponent(videoData.videoUrl)}&filename=${encodeURIComponent(filename)}&cb=${Date.now()}`;
 
-      // 사용자가 수동으로 카드를 클릭하면 저장 프로세스가 작동합니다.
       cardElement.onclick = function() {
         triggerNativeBrowserDownload(proxiedUrl, cardElement, statusElement);
       };
     }
 
-    // 모바일 브라우저에 다운로드를 안전하게 바로 의뢰하는 순수 네이티브 브라우저 공법
     function triggerNativeBrowserDownload(proxiedUrl, cardElement, statusElement) {
-      // 투명도를 반투명하게 만들어 조작 완료를 직관적으로 구분하되, "언제든지 무한 재클릭"이 가능하도록 클릭 리스너는 삭제하지 않습니다.
+      // 완료 상태로 카드가 반투명화 되지만, onclick 재클릭 리스너를 파괴하지 않아 계속 터치 가능하게 만듭니다.
       statusElement.innerText = "완료";
       statusElement.className = "status success";
       cardElement.style.opacity = "0.5"; 
