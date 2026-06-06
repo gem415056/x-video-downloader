@@ -1,4 +1,4 @@
-<!-- index.html -->
+ <!-- index.html -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -27,7 +27,6 @@
       width: 100%;
       max-width: 500px;
     }
-    /* 자동 늘어나는 텍스트창 */
     textarea {
       width: 100%;
       min-height: 120px;
@@ -56,7 +55,6 @@
       font-weight: bold;
       margin-top: 12px;
       cursor: pointer;
-      transition: opacity 0.2s;
     }
     button:active {
       opacity: 0.8;
@@ -65,7 +63,6 @@
       background-color: #555;
       cursor: not-allowed;
     }
-    /* 카드 리스트 */
     .queue-list {
       margin-top: 24px;
       display: flex;
@@ -107,12 +104,12 @@
       font-size: 12px;
       color: #8899a6;
     }
-    /* 가짜 로딩 상태바 */
+    /* 다운로드 진행 상태바 */
     .progress-track {
       width: 100%;
-      height: 4px;
+      height: 6px;
       background-color: var(--border-color);
-      border-radius: 2px;
+      border-radius: 3px;
       overflow: hidden;
       margin-top: 6px;
     }
@@ -120,16 +117,7 @@
       height: 100%;
       width: 0%;
       background-color: var(--primary-color);
-      transition: width 0.3s;
-    }
-    .progress-track.active .progress-bar {
-      width: 100%;
-      animation: pulse 1.5s infinite;
-    }
-    @keyframes pulse {
-      0% { opacity: 0.6; }
-      50% { opacity: 1; }
-      100% { opacity: 0.6; }
+      transition: width 0.1s linear;
     }
   </style>
 </head>
@@ -142,7 +130,6 @@
   </div>
 
   <script>
-    // 텍스트 상자 자동 조절
     const tx = document.getElementById('linksInput');
     tx.addEventListener('input', function() {
       this.style.height = 'auto';
@@ -160,19 +147,12 @@
         return;
       }
 
-      if (urls.length > 40) {
-        alert('한 번에 최대 40개까지만 다운로드할 수 있습니다.');
-        return;
-      }
-
       const queueList = document.getElementById('queueList');
       const downloadBtn = document.getElementById('downloadBtn');
       
-      // 화면 초기화 및 버튼 비활성화
       queueList.innerHTML = '';
       downloadBtn.disabled = true;
 
-      // 1. 대기 카드 생성
       const queue = urls.map((url, index) => {
         const card = document.createElement('div');
         card.className = 'card';
@@ -181,38 +161,33 @@
           <div class="card-info">
             <div class="status waiting" id="status-${index}">[대기중] 순서를 기다리는 중...</div>
             <div class="resolution" id="res-${index}">-</div>
-            <div class="progress-track" id="track-${index}"><div class="progress-bar"></div></div>
+            <div class="progress-track"><div class="progress-bar" id="bar-${index}"></div></div>
           </div>
         `;
         queueList.appendChild(card);
         return { url, index };
       });
 
-      // 2. 순차적 다운로드 실행
+      // 순차적으로 하나씩 완전히 끝날 때까지 대기하며 실행
       for (let i = 0; i < queue.length; i++) {
         await processDownload(queue[i].url, queue[i].index);
-        // 다운로드 실행 후 브라우저가 파일을 처리할 시간을 잠시 주기 위해 1.5초 대기
-        await new Promise(resolve => setTimeout(resolve, 1500));
       }
 
       downloadBtn.disabled = false;
-      alert('모든 링크의 처리가 완료되었습니다.');
+      alert('모든 다운로드 작업이 완료되었습니다!');
     }
 
     async function processDownload(url, index) {
       const statusText = document.getElementById(`status-${index}`);
-      const track = document.getElementById(`track-${index}`);
-      const progressBar = track.querySelector('.progress-bar');
+      const progressBar = document.getElementById(`bar-${index}`);
       const resText = document.getElementById(`res-${index}`);
       const thumbDiv = document.getElementById(`thumb-${index}`);
 
-      statusText.innerText = "[분석중] 고화질 영상 추출 중...";
+      statusText.innerText = "[분석중] 링크 우회 분석 중...";
       statusText.className = "status loading";
-      track.classList.add('active');
-      progressBar.style.width = "50%";
 
       try {
-        // 자체 개발한 Vercel API 서버 호출
+        // 1. 서버리스 함수 호출하여 고화질 비디오 링크 획득
         const response = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
         const result = await response.json();
 
@@ -220,38 +195,83 @@
           throw new Error(result.error || "분석 실패");
         }
 
-        // 결과 반영 (썸네일, 화질 정보)
-        thumbDiv.innerHTML = `<img src="${result.thumbnail}" class="thumbnail" alt="썸네일">`;
+        // 화면 갱신
+        if (result.thumbnail) {
+          thumbDiv.innerHTML = `<img src="${result.thumbnail}" class="thumbnail" alt="썸네일">`;
+        }
         resText.innerText = `화질: ${result.resolution}`;
-        statusText.innerText = "[다운로드중] 기기에 저장 중...";
-        progressBar.style.width = "100%";
+        statusText.innerText = "[다운로드중] 파일 요청 중...";
 
-        // 브라우저에 다운로드 트리거
-        triggerBrowserDownload(result.videoUrl, `X_video_${Date.now()}.mp4`);
-        
-        statusText.innerText = "[완료] 다운로드 시작됨";
-        statusText.className = "status success";
-        track.classList.remove('active');
+        // 2. 실제 파일 스트림 다운로드 수행 (CORS 우회 다운로드)
+        await downloadFileHelper(result.videoUrl, `X_video_${Date.now()}.mp4`, index);
 
       } catch (error) {
         statusText.innerText = `[오류] ${error.message}`;
         statusText.className = "status error";
         progressBar.style.width = "0%";
-        track.classList.remove('active');
       }
     }
 
-    // 파일 다운로드를 강제하거나 새창으로 여는 안전한 트리거 함수
-    function triggerBrowserDownload(url, filename) {
-      // 모바일 브라우저의 차단 동작을 방지하기 위해 가상 링크 클릭 사용
-      const a = document.createElement('a');
-      a.href = url;
-      a.setAttribute('download', filename);
-      // 크로스오리진 문제로 다운로드가 거부되고 재생만 될 경우를 대비해 새창 옵션 부여
-      a.setAttribute('target', '_blank'); 
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+    // 파일을 블롭으로 내려받아 강제 기기 저장을 수행하는 핵심 함수
+    async function downloadFileHelper(videoUrl, filename, index) {
+      const statusText = document.getElementById(`status-${index}`);
+      const progressBar = document.getElementById(`bar-${index}`);
+
+      try {
+        const fileResponse = await fetch(videoUrl);
+        if (!fileResponse.ok) throw new Error("파일 다운로드 응답 실패");
+
+        const contentLength = fileResponse.headers.get('content-length');
+        const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+        
+        const reader = fileResponse.body.getReader();
+        let receivedBytes = 0;
+        const chunks = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          chunks.push(value);
+          receivedBytes += value.length;
+
+          if (totalBytes > 0) {
+            const percent = Math.round((receivedBytes / totalBytes) * 100);
+            progressBar.style.width = `${percent}%`;
+            statusText.innerText = `[다운로드중] 파일 받는 중... (${percent}%)`;
+          }
+        }
+
+        // 가상 Blob 파일 생성 및 즉시 다운로드 처리
+        const blob = new Blob(chunks, { type: 'video/mp4' });
+        const blobUrl = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+
+        statusText.innerText = "[완료] 기기에 저장 완료";
+        statusText.className = "status success";
+
+      } catch (e) {
+        console.warn("Blob 다운로드 실패, 우회 새창 열기로 시도합니다.", e);
+        
+        // 브라우저 환경에 따라 Blob 차단 시 대체 수단 (안전 장치)
+        statusText.innerText = "[오류] 직접 다운로드 실패. 새창에서 길게 눌러 저장하세요.";
+        statusText.className = "status error";
+        
+        const a = document.createElement('a');
+        a.href = videoUrl;
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noreferrer'); // 403 오류 우회용
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     }
   </script>
 </body>
