@@ -9,12 +9,11 @@
     :root {
       --bg-color: #ffffff;
       --text-color: #333333;
-      --primary-color: #7293bc; /* 메인 테마색 */
-      --button-text: #f3faff; /* 다운로드 버튼 글자색 */
-      --input-bg: #f5f5f5; /* 입력창 및 카드창 배경색 (연회색) */
-      --input-border: #a0a0a0; /* 입력창 및 카드창 테두리색 (회색) */
+      --primary-color: #7293bc; 
+      --button-text: #f3faff; 
+      --input-bg: #f5f5f5; 
+      --input-border: #a0a0a0; 
       
-      /* 배지 색상 */
       --badge-waiting: #888888; 
       --badge-loading: #23496d; 
       --badge-success: #ba8093; 
@@ -46,23 +45,22 @@
       position: relative;
       width: 100%;
     }
-    /* 스마트 조절 입력창 스타일 */
     textarea {
       width: 100%;
-      height: 42px; /* 기본 1줄 높이 */
+      height: 42px; 
       min-height: 42px;
-      max-height: 128px; /* 최대 5줄 높이 */
+      max-height: 128px; 
       background-color: var(--input-bg);
       color: var(--text-color);
       border: 1px solid var(--input-border);
       border-radius: 12px;
-      padding: 10px 44px 10px 14px; /* 우측 지우기 버튼 마진 */
+      padding: 10px 44px 10px 14px; 
       box-sizing: border-box;
       font-size: 14px;
       line-height: 20px;
       resize: none;
       outline: none;
-      overflow-y: hidden; /* 처음에는 스크롤 바 숨김 */
+      overflow-y: hidden; 
       transition: border-color 0.2s;
     }
     textarea:focus {
@@ -70,7 +68,7 @@
     }
     .clear-btn {
       position: absolute;
-      top: 7px; /* 1줄 높이에 맞춰 지우기 버튼 세로 중앙 정렬 */
+      top: 7px; 
       right: 12px;
       background: none;
       border: none;
@@ -106,15 +104,13 @@
       cursor: not-allowed;
     }
     
-    /* 한 행에 3개씩 배치되는 그리드 */
     .queue-list {
       margin-top: 24px;
       display: grid;
-      grid-template-columns: repeat(3, 1fr); /* 3열 고정 */
-      gap: 10px; /* 카드간 간격 넓힘 */
+      grid-template-columns: repeat(3, 1fr); 
+      gap: 10px; 
       width: 100%;
     }
-    /* 미니멀한 세로형 직사각형 카드 디자인 */
     .card {
       background-color: var(--input-bg);
       border: 1px solid var(--input-border);
@@ -123,12 +119,11 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px; /* 내부 요소 간격 설정 */
+      gap: 8px; 
       box-sizing: border-box;
       text-align: center;
       position: relative;
     }
-    /* 썸네일 박스는 완벽한 1:1 정사각형 고정 */
     .thumb-box {
       width: 100%;
       aspect-ratio: 1 / 1; 
@@ -188,7 +183,6 @@
     <div class="header">X Downloader</div>
     
     <div class="input-wrapper">
-      <!-- placeholder 텍스트 단순화 -->
       <textarea id="linksInput" placeholder="URL을 입력하세요"></textarea>
       <button class="clear-btn" onclick="clearInput()" title="전체 지우기">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7293bc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -207,7 +201,6 @@
   <script>
     const tx = document.getElementById('linksInput');
     
-    // 스마트 높이 조절 함수 (기본 1줄 ~ 최대 5줄 스크롤)
     function adjustHeight() {
       tx.style.height = 'auto';
       let scrollHeight = tx.scrollHeight;
@@ -221,6 +214,29 @@
       }
     }
     tx.addEventListener('input', adjustHeight);
+
+    // [신규 기능] 붙여넣기 시 자동으로 줄바꿈(엔터) 추가하는 이벤트 핸들러
+    tx.addEventListener('paste', function(e) {
+      // 브라우저의 기본 붙여넣기 동작을 가로챕니다.
+      e.preventDefault();
+      
+      const clipboardData = e.clipboardData || window.clipboardData;
+      const pastedText = clipboardData.getData('Text').trim();
+      
+      if (pastedText) {
+        // 현재 입력창에 글이 있고, 마지막 글자가 줄바꿈(\n)이 아니면 강제로 줄바꿈을 먼저 추가합니다.
+        if (tx.value && !tx.value.endsWith('\n')) {
+          tx.value += '\n';
+        }
+        
+        // 붙여넣은 텍스트 뒤에 자동으로 줄바꿈(\n)을 덧붙여 입력창에 추가합니다.
+        tx.value += pastedText + '\n';
+        
+        // 입력창 높이 재계산 및 스크롤을 맨 아래로 이동
+        adjustHeight();
+        tx.scrollTop = tx.scrollHeight;
+      }
+    });
 
     function clearInput() {
       const linksInput = document.getElementById('linksInput');
@@ -319,7 +335,6 @@
         const blob = new Blob(chunks, { type: 'video/mp4' });
         const blobUrl = URL.createObjectURL(blob);
 
-        // 브라우저 렌더링 큐 확보를 위해 setTimeout으로 다운로드 지연 실행 (안정성 확보)
         setTimeout(() => {
           const a = document.createElement('a');
           a.href = blobUrl;
@@ -333,7 +348,6 @@
         statusText.className = "status success";
         card.style.cursor = "pointer";
         
-        // [백업 기능 추가] 완료 상태의 카드를 누르면 로컬에 준비된 영상을 무조건 즉시 재다운로드
         card.onclick = function() {
           const a = document.createElement('a');
           a.href = blobUrl;
@@ -350,7 +364,6 @@
         statusText.className = "status error";
         card.style.cursor = "pointer";
         
-        // 오류 상태 카드 터치 시 강제 다운로드 시도
         card.onclick = function() {
           const a = document.createElement('a');
           a.href = proxiedUrl;
