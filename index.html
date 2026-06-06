@@ -363,25 +363,21 @@
       cardElement.style.cursor = "pointer";
 
       const filename = `X_${tweetId}_${videoNum}.mp4`;
-      
-      // 캐싱 우회 난수 매핑
       const proxiedUrl = `/api/proxy?url=${encodeURIComponent(videoData.videoUrl)}&filename=${encodeURIComponent(filename)}&cb=${Date.now()}`;
 
-      // 카드를 누르면 브라우저 네이티브 다운로드 백그라운드로 즉시 이관
+      // 카드를 터치할 때 작동하는 함수
       cardElement.onclick = function() {
         triggerNativeBrowserDownload(proxiedUrl, cardElement, statusElement);
       };
     }
 
-    // 모바일 기기 메모리를 전혀 쓰지 않고, OS 자체 다운로드 엔진으로 즉시 토스하는 순수 브라우저 공법 (안정성 100%)
     function triggerNativeBrowserDownload(proxiedUrl, cardElement, statusElement) {
-      // 누르자마자 즉시 완료 처리 (중복 방지)
+      // [핵심 변경] 완료 상태로 카드 외형은 바꾸지만, onclick 이벤트는 해제하지 않습니다!
       statusElement.innerText = "완료";
       statusElement.className = "status success";
-      cardElement.onclick = null; 
       cardElement.style.opacity = "0.5"; 
 
-      // 가상 링크를 브라우저에 던져 네이티브 다운로드 매니저 가동
+      // 다운로드 시도
       const a = document.createElement('a');
       a.href = proxiedUrl;
       document.body.appendChild(a);
