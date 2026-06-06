@@ -103,4 +103,4 @@ export default async function handler(req) {
   } catch (error) {
     return new Response(JSON.stringify({ error: "분석 실패: " + error.message }), { status: 500, headers });
   }
-}
+        }
