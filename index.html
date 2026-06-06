@@ -1,0 +1,258 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X 동영상 다운로더</title>
+  <style>
+    :root {
+      --bg-color: #0f1419;
+      --card-bg: #1e2732;
+      --text-color: #e7e9ea;
+      --primary-color: #1d9bf0;
+      --border-color: #38444d;
+    }
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 500px;
+    }
+    /* 자동 늘어나는 텍스트창 */
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px;
+      box-sizing: border-box;
+      font-size: 14px;
+      resize: none;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea:focus {
+      border-color: var(--primary-color);
+    }
+    button {
+      width: 100%;
+      background-color: var(--primary-color);
+      color: #fff;
+      border: none;
+      border-radius: 25px;
+      padding: 14px;
+      font-size: 16px;
+      font-weight: bold;
+      margin-top: 12px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:active {
+      opacity: 0.8;
+    }
+    button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+    /* 카드 리스트 */
+    .queue-list {
+      margin-top: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .thumbnail {
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      object-fit: cover;
+      background-color: #000;
+    }
+    .card-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .status {
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .status.waiting { color: #8899a6; }
+    .status.loading { color: #ffad1f; }
+    .status.success { color: #00ba7c; }
+    .status.error { color: #f4212e; }
+    
+    .resolution {
+      font-size: 12px;
+      color: #8899a6;
+    }
+    /* 가짜 로딩 상태바 */
+    .progress-track {
+      width: 100%;
+      height: 4px;
+      background-color: var(--border-color);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background-color: var(--primary-color);
+      transition: width 0.3s;
+    }
+    .progress-track.active .progress-bar {
+      width: 100%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <textarea id="linksInput" placeholder="여기에 X(트위터) 링크를 줄바꿈(Enter)으로 구분하여 입력하세요 (최대 40개)"></textarea>
+    <button id="downloadBtn" onclick="startQueue()">동영상 다운로드 시작</button>
+    <div class="queue-list" id="queueList"></div>
+  </div>
+
+  <script>
+    // 텍스트 상자 자동 조절
+    const tx = document.getElementById('linksInput');
+    tx.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = (this.scrollHeight) + 'px';
+    });
+
+    async function startQueue() {
+      const input = document.getElementById('linksInput').value;
+      const urls = input.split('\n')
+                        .map(url => url.trim())
+                        .filter(url => url.length > 0 && (url.includes('twitter.com') || url.includes('x.com')));
+
+      if (urls.length === 0) {
+        alert('올바른 X(트위터) 링크를 하나 이상 입력해주세요.');
+        return;
+      }
+
+      if (urls.length > 40) {
+        alert('한 번에 최대 40개까지만 다운로드할 수 있습니다.');
+        return;
+      }
+
+      const queueList = document.getElementById('queueList');
+      const downloadBtn = document.getElementById('downloadBtn');
+      
+      // 화면 초기화 및 버튼 비활성화
+      queueList.innerHTML = '';
+      downloadBtn.disabled = true;
+
+      // 1. 대기 카드 생성
+      const queue = urls.map((url, index) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="thumbnail" id="thumb-${index}"></div>
+          <div class="card-info">
+            <div class="status waiting" id="status-${index}">[대기중] 순서를 기다리는 중...</div>
+            <div class="resolution" id="res-${index}">-</div>
+            <div class="progress-track" id="track-${index}"><div class="progress-bar"></div></div>
+          </div>
+        `;
+        queueList.appendChild(card);
+        return { url, index };
+      });
+
+      // 2. 순차적 다운로드 실행
+      for (let i = 0; i < queue.length; i++) {
+        await processDownload(queue[i].url, queue[i].index);
+        // 다운로드 실행 후 브라우저가 파일을 처리할 시간을 잠시 주기 위해 1.5초 대기
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+
+      downloadBtn.disabled = false;
+      alert('모든 링크의 처리가 완료되었습니다.');
+    }
+
+    async function processDownload(url, index) {
+      const statusText = document.getElementById(`status-${index}`);
+      const track = document.getElementById(`track-${index}`);
+      const progressBar = track.querySelector('.progress-bar');
+      const resText = document.getElementById(`res-${index}`);
+      const thumbDiv = document.getElementById(`thumb-${index}`);
+
+      statusText.innerText = "[분석중] 고화질 영상 추출 중...";
+      statusText.className = "status loading";
+      track.classList.add('active');
+      progressBar.style.width = "50%";
+
+      try {
+        // 자체 개발한 Vercel API 서버 호출
+        const response = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || "분석 실패");
+        }
+
+        // 결과 반영 (썸네일, 화질 정보)
+        thumbDiv.innerHTML = `<img src="${result.thumbnail}" class="thumbnail" alt="썸네일">`;
+        resText.innerText = `화질: ${result.resolution}`;
+        statusText.innerText = "[다운로드중] 기기에 저장 중...";
+        progressBar.style.width = "100%";
+
+        // 브라우저에 다운로드 트리거
+        triggerBrowserDownload(result.videoUrl, `X_video_${Date.now()}.mp4`);
+        
+        statusText.innerText = "[완료] 다운로드 시작됨";
+        statusText.className = "status success";
+        track.classList.remove('active');
+
+      } catch (error) {
+        statusText.innerText = `[오류] ${error.message}`;
+        statusText.className = "status error";
+        progressBar.style.width = "0%";
+        track.classList.remove('active');
+      }
+    }
+
+    // 파일 다운로드를 강제하거나 새창으로 여는 안전한 트리거 함수
+    function triggerBrowserDownload(url, filename) {
+      // 모바일 브라우저의 차단 동작을 방지하기 위해 가상 링크 클릭 사용
+      const a = document.createElement('a');
+      a.href = url;
+      a.setAttribute('download', filename);
+      // 크로스오리진 문제로 다운로드가 거부되고 재생만 될 경우를 대비해 새창 옵션 부여
+      a.setAttribute('target', '_blank'); 
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  </script>
+</body>
+</html>
