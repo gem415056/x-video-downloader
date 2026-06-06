@@ -213,26 +213,16 @@
         tx.style.overflowY = 'hidden';
       }
     }
-    tx.addEventListener('input', adjustHeight);
 
-    // [신규 기능] 붙여넣기 시 자동으로 줄바꿈(엔터) 추가하는 이벤트 핸들러
-    tx.addEventListener('paste', function(e) {
-      // 브라우저의 기본 붙여넣기 동작을 가로챕니다.
-      e.preventDefault();
+    // 모바일 클립보드 및 키보드 자동 줄바꿈 100% 감지 로직
+    tx.addEventListener('input', function() {
+      adjustHeight();
       
-      const clipboardData = e.clipboardData || window.clipboardData;
-      const pastedText = clipboardData.getData('Text').trim();
-      
-      if (pastedText) {
-        // 현재 입력창에 글이 있고, 마지막 글자가 줄바꿈(\n)이 아니면 강제로 줄바꿈을 먼저 추가합니다.
-        if (tx.value && !tx.value.endsWith('\n')) {
-          tx.value += '\n';
-        }
-        
-        // 붙여넣은 텍스트 뒤에 자동으로 줄바꿈(\n)을 덧붙여 입력창에 추가합니다.
-        tx.value += pastedText + '\n';
-        
-        // 입력창 높이 재계산 및 스크롤을 맨 아래로 이동
+      const val = tx.value;
+      // 트위터/X 주소 끝부분에 공백이나 줄바꿈이 없으면 강제로 줄바꿈을 즉시 추가
+      const twitterRegex = /https?:\/\/(twitter|x)\.com\/[a-zA-Z0-9_]+\/status\/\d+[^ \n]*$/;
+      if (twitterRegex.test(val)) {
+        tx.value = val + '\n';
         adjustHeight();
         tx.scrollTop = tx.scrollHeight;
       }
@@ -244,6 +234,9 @@
       linksInput.style.height = '42px';
       linksInput.style.overflowY = 'hidden';
     }
+
+    // 전역 대기 큐 배열
+    let downloadQueue = [];
 
     async function startQueue() {
       const input = document.getElementById('linksInput').value;
@@ -261,32 +254,38 @@
       
       queueList.innerHTML = '';
       downloadBtn.disabled = true;
+      downloadQueue = [];
 
-      const queue = urls.map((url, index) => {
+      // 1단계: 초기 링크 개수만큼 placeholder 카드 미리 생성
+      urls.forEach((url, index) => {
         const card = document.createElement('div');
         card.className = 'card';
         card.id = `card-${index}`;
         card.innerHTML = `
           <div class="thumb-box" id="thumb-${index}"></div>
-          <div class="resolution" id="res-${index}">-</div>
+          <div class="resolution" id="res-${index}">대기중</div>
           <span class="status waiting" id="status-${index}">대기중</span>
         `;
         queueList.appendChild(card);
-        return { url, index };
+        downloadQueue.push({ url, index, isPlaceholder: true });
       });
 
-      for (let i = 0; i < queue.length; i++) {
-        await processDownload(queue[i].url, queue[i].index);
+      // 2단계: 순차 처리 엔진 가동
+      for (let i = 0; i < downloadQueue.length; i++) {
+        const item = downloadQueue[i];
+        if (item.isPlaceholder) {
+          await processLink(item.url, item.index);
+        }
       }
 
       downloadBtn.disabled = false;
-      alert('모든 링크 분석 및 다운로드 시도가 완료되었습니다!');
     }
 
-    async function processDownload(url, index) {
-      const statusText = document.getElementById(`status-${index}`);
-      const resText = document.getElementById(`res-${index}`);
-      const thumbDiv = document.getElementById(`thumb-${index}`);
+    async function processLink(url, originalIndex) {
+      const statusText = document.getElementById(`status-${originalIndex}`);
+      const resText = document.getElementById(`res-${originalIndex}`);
+      const thumbDiv = document.getElementById(`thumb-${originalIndex}`);
+      const originalCard = document.getElementById(`card-${originalIndex}`);
 
       statusText.innerText = "분석중";
       statusText.className = "status loading";
@@ -299,79 +298,81 @@
           throw new Error(result.error || "분석 실패");
         }
 
-        if (result.thumbnail) {
-          thumbDiv.innerHTML = `<img src="${result.thumbnail}" alt="썸네일">`;
+        const videos = result.videos || [];
+        if (videos.length === 0) {
+          throw new Error("영상을 찾을 수 없음");
         }
-        resText.innerText = result.resolution;
-        statusText.innerText = "다운중";
 
-        const proxiedUrl = `/api/proxy?url=${encodeURIComponent(result.videoUrl)}`;
-        await downloadFileHelper(proxiedUrl, `X_video_${Date.now()}.mp4`, index);
+        // 발견된 첫 번째 영상으로 원래의 카드 슬롯 업데이트
+        const firstVideo = videos[0];
+        if (firstVideo.thumbnail) {
+          thumbDiv.innerHTML = `<img src="${firstVideo.thumbnail}" alt="썸네일">`;
+        }
+        resText.innerText = firstVideo.resolution;
+        
+        const firstProxiedUrl = `/api/proxy?url=${encodeURIComponent(firstVideo.videoUrl)}`;
+        await triggerIframeDownload(firstProxiedUrl, originalCard, statusText);
+
+        // 한 트윗 안에 동영상이 여러 개(2개 이상) 있는 경우 카드 동적 추가 생성
+        if (videos.length > 1) {
+          let lastInsertedCard = originalCard;
+          for (let k = 1; k < videos.length; k++) {
+            const extraVideo = videos[k];
+            const extraIndex = `${originalIndex}_sub_${k}`;
+            
+            const extraCard = document.createElement('div');
+            extraCard.className = 'card';
+            extraCard.id = `card-${extraIndex}`;
+            extraCard.innerHTML = `
+              <div class="thumb-box" id="thumb-${extraIndex}">
+                <img src="${extraVideo.thumbnail}" alt="썸네일">
+              </div>
+              <div class="resolution" id="res-${extraIndex}">${extraVideo.resolution}</div>
+              <span class="status waiting" id="status-${extraIndex}">다운중</span>
+            `;
+            
+            // 그리드 레이아웃상 원래 카드 바로 뒤에 차례대로 삽입합니다.
+            lastInsertedCard.after(extraCard);
+            lastInsertedCard = extraCard;
+
+            // 추가 카드 다운로드 실행 및 1.5초 안정화 딜레이 대기
+            const extraProxiedUrl = `/api/proxy?url=${encodeURIComponent(extraVideo.videoUrl)}`;
+            await triggerIframeDownload(extraProxiedUrl, extraCard, document.getElementById(`status-${extraIndex}`));
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+        } else {
+          // 영상이 1개인 경우 일반적인 순서 안정을 위해 1.5초 대기
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
 
       } catch (error) {
         statusText.innerText = "오류 (클릭)";
         statusText.className = "status error";
+        resText.innerText = "에러 발생";
       }
     }
 
-    async function downloadFileHelper(proxiedUrl, filename, index) {
-      const statusText = document.getElementById(`status-${index}`);
-      const card = document.getElementById(`card-${index}`);
+    // 모바일 브라우저의 다운로드 누락을 방지하는 숨겨진 Iframe 무한 다운로드 공법
+    async function triggerIframeDownload(proxiedUrl, cardElement, statusElement) {
+      statusElement.innerText = "다운중";
+      statusElement.className = "status loading";
 
-      try {
-        const fileResponse = await fetch(proxiedUrl);
-        if (!fileResponse.ok) throw new Error("서버 응답 실패");
+      // 보이지 않는 가상 iframe 생성 후 바디에 탑재하여 강제 다운로드 작동
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'none';
+      iframe.src = proxiedUrl;
+      document.body.appendChild(iframe);
 
-        const reader = fileResponse.body.getReader();
-        const chunks = [];
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          statusText.innerText = "다운중";
-        }
-
-        const blob = new Blob(chunks, { type: 'video/mp4' });
-        const blobUrl = URL.createObjectURL(blob);
-
-        setTimeout(() => {
-          const a = document.createElement('a');
-          a.href = blobUrl;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        }, 100);
-
-        statusText.innerText = "완료!";
-        statusText.className = "status success";
-        card.style.cursor = "pointer";
-        
-        card.onclick = function() {
-          const a = document.createElement('a');
-          a.href = blobUrl;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+      // 브라우저의 다운로드 트리거 완료 시점 설정 및 클릭 재다운로드 맵핑
+      setTimeout(() => {
+        statusElement.innerText = "완료!";
+        statusElement.className = "status success";
+        cardElement.style.cursor = "pointer";
+        cardElement.onclick = function() {
+          triggerIframeDownload(proxiedUrl, cardElement, statusElement);
         };
-
-      } catch (e) {
-        console.warn("직접 다운로드 실패:", e);
-        
-        statusText.innerText = "오류 (클릭)";
-        statusText.className = "status error";
-        card.style.cursor = "pointer";
-        
-        card.onclick = function() {
-          const a = document.createElement('a');
-          a.href = proxiedUrl;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        };
-      }
+        document.body.removeChild(iframe);
+      }, 1000);
     }
   </script>
 </body>
