@@ -142,10 +142,15 @@
       font-size: 10px;
       color: #666666;
       font-weight: bold;
-      white-space: nowrap;
+      white-space: normal; /* 에러 메시지 줄바꿈 허용 */
+      word-break: break-all;
       overflow: hidden;
-      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2; /* 에러 메시지 최대 2줄 표시 */
+      -webkit-box-orient: vertical;
       width: 100%;
+      height: 24px; /* 높이 일정하게 제한 */
+      line-height: 12px;
     }
     .status {
       font-size: 10px;
@@ -167,13 +172,11 @@
       background-color: var(--badge-loading);
       color: var(--badge-text);
     } 
-    /* 저장 대기 상태 배지 (분홍색 활성화) */
     .status.ready { 
       background-color: var(--badge-success);
       color: var(--badge-text);
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     } 
-    /* 다운 완료 상태 배지 (연회색 비활성화) */
     .status.success { 
       background-color: #e0e0e0;
       color: #888888;
@@ -242,19 +245,16 @@
       resetButton();
     }
 
-    // 일괄 다운로드 대상들을 보관하는 전역 큐 배열
     let downloadJobs = [];
 
     async function startQueue() {
       const downloadBtn = document.getElementById('downloadBtn');
 
-      // [기획 수정] 만약 버튼 상태가 'save-all' 클래스를 가지고 있다면 일괄 다운로드 실행
       if (downloadBtn.classList.contains('save-all')) {
         runBulkDownload();
         return;
       }
 
-      // 그렇지 않다면 일반적인 링크 분석 절차 시작
       const input = document.getElementById('linksInput').value;
       const urls = input.split('\n')
                         .map(url => url.trim())
@@ -272,9 +272,8 @@
       downloadBtn.innerText = "분석 중...";
       downloadBtn.style.backgroundColor = "#cccccc";
       
-      downloadJobs = []; // 다운로드 직무 초기화
+      downloadJobs = []; 
 
-      // 1단계: 초기 Placeholder 카드 세팅
       urls.forEach((url, index) => {
         const card = document.createElement('div');
         card.className = 'card';
@@ -285,18 +284,17 @@
           <span class="status waiting" id="status-${index}">대기중</span>
         `;
         queueList.appendChild(card);
+        downloadJobs.push({ url, index, isPlaceholder: true });
       });
 
-      // 2단계: 순차적 백엔드 분석 시작
       for (let i = 0; i < urls.length; i++) {
         await processLink(urls[i], i);
       }
 
-      // 3단계: 분석 완료 후 다운로드 시작 버튼을 핑크빛 [모두 저장하기] 상태로 변환
-      if (downloadJobs.length > 0) {
+      if (downloadJobs.some(job => job.proxiedUrl)) { // 준비 완료된 다운로드 직무가 1개 이상 있을 때
         downloadBtn.disabled = false;
         downloadBtn.innerText = "모두 저장하기";
-        downloadBtn.style.backgroundColor = "var(--badge-success)"; // 성공 핑크색상으로 변경
+        downloadBtn.style.backgroundColor = "var(--badge-success)"; 
         downloadBtn.classList.add('save-all');
       } else {
         resetButton();
@@ -317,6 +315,7 @@
         const result = await response.json();
 
         if (!response.ok) {
+          // [핵심 변경] 백엔드가 반환한 구체적인 에러 메시지를 예외로 던집니다.
           throw new Error(result.error || "분석 실패");
         }
 
@@ -328,11 +327,9 @@
         const tweetIdMatch = url.match(/\/status\/(\d+)/);
         const tweetId = tweetIdMatch ? tweetIdMatch[1] : Date.now();
 
-        // 첫 번째 동영상 셋업
         const firstVideo = videos[0];
-        updateCardToReady(originalCard, statusText, resText, thumbDiv, firstVideo, tweetId, 1);
+        updateCardToReady(originalCard, statusText, resText, thumbDiv, firstVideo, tweetId, 1, originalIndex);
 
-        // 한 트윗 내에 동영상이 여러 개일 경우 그리드 공간에 카드 추가 복제
         if (videos.length > 1) {
           let lastInsertedCard = originalCard;
           for (let k = 1; k < videos.length; k++) {
@@ -355,21 +352,21 @@
             const extraRes = document.getElementById(`res-${extraIndex}`);
             const extraStatus = document.getElementById(`status-${extraIndex}`);
             
-            updateCardToReady(extraCard, extraStatus, extraRes, extraThumb, extraVideo, tweetId, k + 1);
+            updateCardToReady(extraCard, extraStatus, extraRes, extraThumb, extraVideo, tweetId, k + 1, extraIndex);
           }
         }
         
         await new Promise(resolve => setTimeout(resolve, 300));
 
       } catch (error) {
+        // [핵심 변경] 상세 오류 사유를 카드 화질 텍스트 영역에 선명하게 노출합니다.
         statusText.innerText = "오류 (클릭)";
         statusText.className = "status error";
-        resText.innerText = "에러 발생";
+        resText.innerText = error.message; 
       }
     }
 
-    // 각 카드를 분석 후 다운로드 준비 단계로 만드는 결합 제어 함수
-    function updateCardToReady(cardElement, statusElement, resElement, thumbElement, videoData, tweetId, videoNum) {
+    function updateCardToReady(cardElement, statusElement, resElement, thumbElement, videoData, tweetId, videoNum, uniqueIndex) {
       if (videoData.thumbnail) {
         thumbElement.innerHTML = `<img src="${videoData.thumbnail}" alt="썸네일">`;
       }
@@ -379,24 +376,24 @@
       statusElement.className = "status ready";
       cardElement.style.cursor = "pointer";
 
-      // 고유 파일명 명명 규칙 적용 (예: X_12948194_1.mp4)
       const filename = `X_${tweetId}_${videoNum}.mp4`;
       const proxiedUrl = `/api/proxy?url=${encodeURIComponent(videoData.videoUrl)}&filename=${encodeURIComponent(filename)}`;
 
-      // 개별 카드 클릭 시 작동하는 단독 수동 다운로드 바인딩 (백업 안심 장치)
       cardElement.onclick = function() {
-        triggerSingleDownload(cardElement, statusElement, proxiedUrl);
+        triggerSingleDownload(cardElement, statusElement, proxiedUrl, uniqueIndex);
       };
 
-      // 전체 일괄 저장을 위한 내부 대기 큐에 정보 주입
-      downloadJobs.push({
-        cardElement,
-        statusElement,
-        proxiedUrl
-      });
+      // 플레이스홀더를 실제 다운로드 가능한 작업으로 교체
+      const queueIndex = downloadJobs.findIndex(job => job.index === uniqueIndex);
+      const jobObject = { cardElement, statusElement, proxiedUrl, uniqueIndex };
+      
+      if (queueIndex !== -1) {
+        downloadJobs[queueIndex] = jobObject;
+      } else {
+        downloadJobs.push(jobObject);
+      }
     }
 
-    // [핵심 기능] 0.15초 시간차를 두고 순차적 무중단 일괄 다운로드 엔진 가동
     function runBulkDownload() {
       const downloadBtn = document.getElementById('downloadBtn');
       
@@ -404,33 +401,32 @@
       downloadBtn.innerText = "저장 중...";
       downloadBtn.style.backgroundColor = "#cccccc";
 
-      // 150ms 미세 간격을 두어 기기 과부하 및 다운로드 유실 완벽 제어
-      downloadJobs.forEach((job, index) => {
+      // 오직 성공적으로 주소가 준비된 작업(proxiedUrl이 있는 것)만 필터링하여 시간차 다운로드 실행
+      const activeJobs = downloadJobs.filter(job => job.proxiedUrl);
+
+      activeJobs.forEach((job, index) => {
         setTimeout(() => {
           triggerIframeDownload(job.proxiedUrl, job.cardElement, job.statusElement);
         }, index * 150); 
       });
 
-      // 일괄 다운로드 명령이 모두 들어간 뒤 시스템 초기화
-      const totalDelay = (downloadJobs.length * 150) + 1000;
+      const totalDelay = (activeJobs.length * 150) + 1000;
       setTimeout(() => {
         resetButton();
       }, totalDelay);
     }
 
-    // 개별 카드를 수동으로 눌렀을 때, 일괄 작업 목록에서 제외하고 다운로드하는 조율 함수
-    function triggerSingleDownload(cardElement, statusElement, proxiedUrl) {
+    function triggerSingleDownload(cardElement, statusElement, proxiedUrl, uniqueIndex) {
       triggerIframeDownload(proxiedUrl, cardElement, statusElement);
-      // 일괄 다운로드 목록에서 제거하여 중복 저장 차단
-      downloadJobs = downloadQueue.filter(job => job.cardElement !== cardElement);
+      // 대기 리스트에서 수동 클릭된 카드 제거
+      downloadJobs = downloadJobs.filter(job => job.uniqueIndex !== uniqueIndex);
     }
 
-    // 최종 Iframe 다운로드 연동 장치
     function triggerIframeDownload(proxiedUrl, cardElement, statusElement) {
       statusElement.innerText = "완료";
       statusElement.className = "status success";
-      cardElement.onclick = null; // 중복 다운로드 원천 방지
-      cardElement.style.opacity = "0.5"; // 사용된 카드는 흐리게 처리하여 구분
+      cardElement.onclick = null; 
+      cardElement.style.opacity = "0.5"; 
 
       const iframe = document.createElement('iframe');
       iframe.style.display = 'none';
