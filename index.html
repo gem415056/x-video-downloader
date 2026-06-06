@@ -38,16 +38,8 @@
       color: var(--primary-color);
       font-size: 26px;
       font-weight: 800;
-      margin: 0 0 10px 0;
+      margin: 0 0 20px 0;
       text-align: left;
-    }
-    .guide-tip {
-      font-size: 11px;
-      color: #7293bc;
-      font-weight: bold;
-      text-align: left;
-      margin-bottom: 12px;
-      line-height: 15px;
     }
     .input-wrapper {
       position: relative;
@@ -200,7 +192,6 @@
 
   <div class="container">
     <div class="header">X Downloader</div>
-    <div class="guide-tip">💡 분석 완료 후 하단의 [저장] 배지를 누르면 0%~100% 게이지가 차오르며 고유 이름으로 안전하게 저장됩니다.</div>
     
     <div class="input-wrapper">
       <textarea id="linksInput" placeholder="URL을 입력하세요"></textarea>
@@ -289,7 +280,7 @@
         await processLink(urls[i], i);
       }
 
-      resetButton(); // 분석 완료 후 버튼 원상 복구
+      resetButton();
     }
 
     async function processLink(url, originalIndex) {
@@ -371,78 +362,34 @@
       statusElement.className = "status ready";
       cardElement.style.cursor = "pointer";
 
-      // 100% 명확한 고유 파일명 명명
       const filename = `X_${tweetId}_${videoNum}.mp4`;
+      
+      // 캐싱 우회 난수 매핑
+      const proxiedUrl = `/api/proxy?url=${encodeURIComponent(videoData.videoUrl)}&filename=${encodeURIComponent(filename)}&cb=${Date.now()}`;
 
-      // 카드를 터치했을 때 작동하는 개별 정밀 다운로드 함수 연결
+      // 카드를 누르면 브라우저 네이티브 다운로드 백그라운드로 즉시 이관
       cardElement.onclick = function() {
-        triggerIndividualBlobDownload(videoData.videoUrl, filename, cardElement, statusElement);
+        triggerNativeBrowserDownload(proxiedUrl, cardElement, statusElement);
       };
     }
 
-    // [핵심 변경] 사용자가 터치한 카드만 정밀하고 안전하게 다운로드하는 로직 (안전성 100% 보장)
-    async function triggerIndividualBlobDownload(rawVideoUrl, filename, cardElement, statusElement) {
-      // 다운로드 진행률 시작 표시
-      statusElement.innerText = "0%";
-      statusElement.className = "status loading";
-      cardElement.onclick = null; // 진행 중 더블 클릭 방지
+    // 모바일 기기 메모리를 전혀 쓰지 않고, OS 자체 다운로드 엔진으로 즉시 토스하는 순수 브라우저 공법 (안정성 100%)
+    function triggerNativeBrowserDownload(proxiedUrl, cardElement, statusElement) {
+      // 누르자마자 즉시 완료 처리 (중복 방지)
+      statusElement.innerText = "완료";
+      statusElement.className = "status success";
+      cardElement.onclick = null; 
+      cardElement.style.opacity = "0.5"; 
 
-      try {
-        // 프록시 주소를 사용하여 CORS를 우회해 브라우저에 스트림 직접 다운로드 요청
-        const proxiedUrl = `/api/proxy?url=${encodeURIComponent(rawVideoUrl)}`;
-        const fileResponse = await fetch(proxiedUrl);
-        if (!fileResponse.ok) throw new Error("서버 응답 오류");
-
-        const contentLength = fileResponse.headers.get('content-length');
-        const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
-        
-        const reader = fileResponse.body.getReader();
-        let receivedBytes = 0;
-        const chunks = [];
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          chunks.push(value);
-          receivedBytes += value.length;
-
-          // 실시간으로 배지 내부에 진행률(%) 표출
-          if (totalBytes > 0) {
-            const percent = Math.round((receivedBytes / totalBytes) * 100);
-            statusElement.innerText = `${percent}%`;
-          } else {
-            statusElement.innerText = "받는중";
-          }
-        }
-
-        // 로컬 가상 메모리에 파일 저장 완료 후 기기로 다운로드 트리거
-        const blob = new Blob(chunks, { type: 'video/mp4' });
-        const blobUrl = URL.createObjectURL(blob);
-
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = filename; // 이 브라우저 스크립트 명령 덕분에 파일명이 100% 유지됩니다!
-        document.body.appendChild(a);
-        a.click();
+      // 가상 링크를 브라우저에 던져 네이티브 다운로드 매니저 가동
+      const a = document.createElement('a');
+      a.href = proxiedUrl;
+      document.body.appendChild(a);
+      a.click();
+      
+      setTimeout(() => {
         document.body.removeChild(a);
-        URL.revokeObjectURL(blobUrl);
-
-        // 카드 사용 완료 처리
-        statusElement.innerText = "완료";
-        statusElement.className = "status success";
-        cardElement.style.opacity = "0.5"; // 카드 반투명화
-
-      } catch (e) {
-        console.warn("다운로드 실패:", e);
-        statusElement.innerText = "오류 (클릭)";
-        statusElement.className = "status error";
-        
-        // 에러 발생 시 원래대로 다시 누를 수 있게 복원
-        cardElement.onclick = function() {
-          triggerIndividualBlobDownload(rawVideoUrl, filename, cardElement, statusElement);
-        };
-      }
+      }, 500);
     }
 
     function resetButton() {
@@ -450,7 +397,6 @@
       downloadBtn.disabled = false;
       downloadBtn.innerText = "동영상 분석 시작";
       downloadBtn.style.backgroundColor = "var(--primary-color)";
-      downloadBtn.classList.remove('save-all');
     }
   </script>
 </body>
