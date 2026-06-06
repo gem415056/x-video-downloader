@@ -4,14 +4,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>X 동영상 다운로더</title>
+  <title>X Downloader</title>
   <style>
     :root {
-      --bg-color: #0f1419;
-      --card-bg: #1e2732;
-      --text-color: #e7e9ea;
-      --primary-color: #1d9bf0;
-      --border-color: #38444d;
+      /* 1. 라이트 모드 기준 색상 적용 */
+      --bg-color: #ffffff;
+      --text-color: #333333;
+      --card-bg: #d9f3ff; /* 6. 카드 배경색 */
+      --card-border: #366593; /* 6. 카드 테두리색 */
+      --primary-color: #7293bc; /* 3,4. 메인 테마색 */
+      --button-text: #f3faff; /* 4. 다운로드 버튼 글자색 */
+      --input-bg: #f5f5f5; /* 5. 입력창 내부 배경 (아주 연한 회색) */
+      --input-border: #a0a0a0; /* 5. 입력창 테두리 (중간 회색) */
     }
     body {
       background-color: var(--bg-color);
@@ -23,18 +27,34 @@
       flex-direction: column;
       align-items: center;
     }
+    /* 2. 입력창 전체 영역을 아래로 조정 */
     .container {
       width: 100%;
       max-width: 500px;
+      margin-top: 40px; /* 상단 여백 추가 */
     }
+    /* 3. 좌상단 타이틀 설정 */
+    .header {
+      color: var(--primary-color);
+      font-size: 26px;
+      font-weight: 800;
+      margin: 0 0 20px 0;
+      text-align: left;
+    }
+    /* 9. 입력창과 지우기 버튼을 감싸는 래퍼 */
+    .input-wrapper {
+      position: relative;
+      width: 100%;
+    }
+    /* 5. 입력창 스타일 변경 */
     textarea {
       width: 100%;
       min-height: 120px;
-      background-color: var(--card-bg);
+      background-color: var(--input-bg);
       color: var(--text-color);
-      border: 1px solid var(--border-color);
-      border-radius: 12px;
-      padding: 12px;
+      border: 1px solid var(--input-border);
+      border-radius: 12px; /* 가장자리 둥글게 */
+      padding: 14px 44px 14px 14px; /* 우측에 지우기 버튼 공간 마련 */
       box-sizing: border-box;
       font-size: 14px;
       resize: none;
@@ -44,23 +64,43 @@
     textarea:focus {
       border-color: var(--primary-color);
     }
-    button {
+    /* 9. 휴지통 지우기 버튼 스타일 */
+    .clear-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      transition: background-color 0.2s;
+    }
+    .clear-btn:active {
+      background-color: rgba(114, 147, 188, 0.1);
+    }
+    /* 4. 다운로드 버튼 스타일 변경 */
+    button#downloadBtn {
       width: 100%;
       background-color: var(--primary-color);
-      color: #fff;
+      color: var(--button-text);
       border: none;
       border-radius: 25px;
       padding: 14px;
       font-size: 16px;
       font-weight: bold;
-      margin-top: 12px;
+      margin-top: 16px;
       cursor: pointer;
     }
-    button:active {
-      opacity: 0.8;
+    button#downloadBtn:active {
+      opacity: 0.9;
     }
-    button:disabled {
-      background-color: #555;
+    button#downloadBtn:disabled {
+      background-color: #cccccc;
+      color: #ffffff;
       cursor: not-allowed;
     }
     .queue-list {
@@ -69,21 +109,24 @@
       flex-direction: column;
       gap: 12px;
     }
+    /* 6. 카드 디자인 변경 */
     .card {
       background-color: var(--card-bg);
-      border: 1px solid var(--border-color);
+      border: 1px solid var(--card-border);
       border-radius: 12px;
       padding: 12px;
       display: flex;
       gap: 12px;
       align-items: center;
+      box-sizing: border-box;
     }
     .thumbnail {
       width: 80px;
       height: 80px;
       border-radius: 8px;
       object-fit: cover;
-      background-color: #000;
+      background-color: #fff;
+      border: 1px solid #cce3f0;
     }
     .card-info {
       flex: 1;
@@ -91,23 +134,34 @@
       flex-direction: column;
       gap: 4px;
     }
+    /* 8. 카드 글자색 일괄 조정 및 상태별 컬러 변경 */
     .status {
       font-size: 14px;
       font-weight: bold;
+      color: #555555; /* 카드 내부의 기본 글자색 (진회색) */
     }
-    .status.waiting { color: #8899a6; }
-    .status.loading { color: #ffad1f; }
-    .status.success { color: #00ba7c; }
-    .status.error { color: #f4212e; }
+    .status.waiting { 
+      color: #666666; /* 대기중 진회색 */
+    } 
+    .status.loading { 
+      color: #005dab; /* 8. 다운로드 중인 것 파란색 */
+    } 
+    .status.success { 
+      color: #e66d9b; /* 8. 완료된 것 분홍색 */
+    } 
+    .status.error { 
+      color: #f4212e; 
+    }
     
     .resolution {
       font-size: 12px;
-      color: #8899a6;
+      color: #555555; /* 8. 진회색 */
     }
+    /* 7. 게이지 디자인 변경 (회색 트랙에서 #366593으로 차오름) */
     .progress-track {
       width: 100%;
       height: 6px;
-      background-color: var(--border-color);
+      background-color: #e0e0e0; /* 7. 트랙 배경 회색 */
       border-radius: 3px;
       overflow: hidden;
       margin-top: 6px;
@@ -115,12 +169,11 @@
     .progress-bar {
       height: 100%;
       width: 0%;
-      background-color: var(--primary-color);
+      background-color: #366593; /* 7. 차오르는 게이지색 */
       transition: width 0.1s linear;
     }
-    /* 수동 다운로드 버튼 디자인 */
     .retry-btn {
-      background-color: #e0245e;
+      background-color: #e66d9b;
       color: white;
       border: none;
       border-radius: 6px;
@@ -135,17 +188,40 @@
 <body>
 
   <div class="container">
-    <textarea id="linksInput" placeholder="여기에 X(트위터) 링크를 줄바꿈(Enter)으로 구분하여 입력하세요 (최대 40개)"></textarea>
+    <!-- 3. 좌상단 타이틀 -->
+    <div class="header">X Downloader</div>
+    
+    <!-- 9. 입력 영역 및 전체 지우기 버튼 -->
+    <div class="input-wrapper">
+      <textarea id="linksInput" placeholder="여기에 X(트위터) 링크를 줄바꿈(Enter)으로 구분하여 입력하세요 (최대 40개)"></textarea>
+      <button class="clear-btn" onclick="clearInput()" title="전체 지우기">
+        <!-- 깔끔한 테마 매칭 SVG 휴지통 아이콘 -->
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7293bc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          <line x1="10" y1="11" x2="10" y2="17"></line>
+          <line x1="14" y1="11" x2="14" y2="17"></line>
+        </svg>
+      </button>
+    </div>
+    
     <button id="downloadBtn" onclick="startQueue()">동영상 다운로드 시작</button>
     <div class="queue-list" id="queueList"></div>
   </div>
 
-  <script {index}>
+  <script>
     const tx = document.getElementById('linksInput');
     tx.addEventListener('input', function() {
       this.style.height = 'auto';
       this.style.height = (this.scrollHeight) + 'px';
     });
+
+    // 9. 입력창 전체 지우기 함수
+    function clearInput() {
+      const linksInput = document.getElementById('linksInput');
+      linksInput.value = '';
+      linksInput.style.height = '120px'; // 최소 기본 높이로 복원
+    }
 
     async function startQueue() {
       const input = document.getElementById('linksInput').value;
@@ -267,12 +343,10 @@
       } catch (e) {
         console.warn("직접 다운로드 실패:", e);
         
-        // 오류 상태로 전환
         statusText.innerText = "[시간초과] 직접 다운로드 실패";
         statusText.className = "status error";
         progressBar.style.width = "0%";
 
-        // 해당 카드 내부에 개별 수동 다운로드 버튼 생성 (이 버튼을 누르면 새 창이 열리며 즉시 다운로드 시작됨)
         const btnId = `retry-btn-${index}`;
         if (!document.getElementById(btnId)) {
           const retryBtn = document.createElement('button');
