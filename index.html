@@ -38,8 +38,17 @@
       color: var(--primary-color);
       font-size: 26px;
       font-weight: 800;
-      margin: 0 0 20px 0;
+      margin: 0 0 10px 0;
       text-align: left;
+    }
+    /* 다중 다운로드 안내 가이드 */
+    .guide-tip {
+      font-size: 11px;
+      color: #da608c;
+      font-weight: bold;
+      text-align: left;
+      margin-bottom: 12px;
+      line-height: 15px;
     }
     .input-wrapper {
       position: relative;
@@ -142,14 +151,14 @@
       font-size: 10px;
       color: #666666;
       font-weight: bold;
-      white-space: normal; /* 에러 메시지 줄바꿈 허용 */
+      white-space: normal; 
       word-break: break-all;
       overflow: hidden;
       display: -webkit-box;
-      -webkit-line-clamp: 2; /* 에러 메시지 최대 2줄 표시 */
+      -webkit-line-clamp: 2; 
       -webkit-box-orient: vertical;
       width: 100%;
-      height: 24px; /* 높이 일정하게 제한 */
+      height: 24px; 
       line-height: 12px;
     }
     .status {
@@ -193,6 +202,8 @@
 
   <div class="container">
     <div class="header">X Downloader</div>
+    <!-- 모바일 사용자 가이드 추가 -->
+    <div class="guide-tip">⚠️ 최초 일괄 저장 시 브라우저의 [여러 파일 다운로드 허용] 알림창을 반드시 "허용"해 주셔야 정상 작동합니다.</div>
     
     <div class="input-wrapper">
       <textarea id="linksInput" placeholder="URL을 입력하세요"></textarea>
@@ -291,7 +302,7 @@
         await processLink(urls[i], i);
       }
 
-      if (downloadJobs.some(job => job.proxiedUrl)) { // 준비 완료된 다운로드 직무가 1개 이상 있을 때
+      if (downloadJobs.some(job => job.proxiedUrl)) { 
         downloadBtn.disabled = false;
         downloadBtn.innerText = "모두 저장하기";
         downloadBtn.style.backgroundColor = "var(--badge-success)"; 
@@ -315,7 +326,6 @@
         const result = await response.json();
 
         if (!response.ok) {
-          // [핵심 변경] 백엔드가 반환한 구체적인 에러 메시지를 예외로 던집니다.
           throw new Error(result.error || "분석 실패");
         }
 
@@ -359,7 +369,6 @@
         await new Promise(resolve => setTimeout(resolve, 300));
 
       } catch (error) {
-        // [핵심 변경] 상세 오류 사유를 카드 화질 텍스트 영역에 선명하게 노출합니다.
         statusText.innerText = "오류 (클릭)";
         statusText.className = "status error";
         resText.innerText = error.message; 
@@ -377,13 +386,14 @@
       cardElement.style.cursor = "pointer";
 
       const filename = `X_${tweetId}_${videoNum}.mp4`;
-      const proxiedUrl = `/api/proxy?url=${encodeURIComponent(videoData.videoUrl)}&filename=${encodeURIComponent(filename)}`;
+      
+      // [캐시 무력화] 주소 뒤에 고유 난수(Date.now)를 붙여 브라우저와 CDN이 헤더(파일명)를 캐싱하지 못하게 방지합니다.
+      const proxiedUrl = `/api/proxy?url=${encodeURIComponent(videoData.videoUrl)}&filename=${encodeURIComponent(filename)}&cb=${Date.now()}`;
 
       cardElement.onclick = function() {
         triggerSingleDownload(cardElement, statusElement, proxiedUrl, uniqueIndex);
       };
 
-      // 플레이스홀더를 실제 다운로드 가능한 작업으로 교체
       const queueIndex = downloadJobs.findIndex(job => job.index === uniqueIndex);
       const jobObject = { cardElement, statusElement, proxiedUrl, uniqueIndex };
       
@@ -394,6 +404,7 @@
       }
     }
 
+    // [전체 저장 가동] 1초 간격으로 시간차 안정 순차 다운로드 실행
     function runBulkDownload() {
       const downloadBtn = document.getElementById('downloadBtn');
       
@@ -401,16 +412,15 @@
       downloadBtn.innerText = "저장 중...";
       downloadBtn.style.backgroundColor = "#cccccc";
 
-      // 오직 성공적으로 주소가 준비된 작업(proxiedUrl이 있는 것)만 필터링하여 시간차 다운로드 실행
       const activeJobs = downloadJobs.filter(job => job.proxiedUrl);
 
       activeJobs.forEach((job, index) => {
         setTimeout(() => {
           triggerIframeDownload(job.proxiedUrl, job.cardElement, job.statusElement);
-        }, index * 150); 
+        }, index * 1000); // 1000ms(1초) 간격으로 벌려서 다운로드 안전 발사
       });
 
-      const totalDelay = (activeJobs.length * 150) + 1000;
+      const totalDelay = (activeJobs.length * 1000) + 1000;
       setTimeout(() => {
         resetButton();
       }, totalDelay);
@@ -418,24 +428,24 @@
 
     function triggerSingleDownload(cardElement, statusElement, proxiedUrl, uniqueIndex) {
       triggerIframeDownload(proxiedUrl, cardElement, statusElement);
-      // 대기 리스트에서 수동 클릭된 카드 제거
       downloadJobs = downloadJobs.filter(job => job.uniqueIndex !== uniqueIndex);
     }
 
+    // 묵음 차단되는 iframe 공법 대신, 정식 파일 저장을 요구하는 A 클릭 공법으로 전환
     function triggerIframeDownload(proxiedUrl, cardElement, statusElement) {
       statusElement.innerText = "완료";
       statusElement.className = "status success";
       cardElement.onclick = null; 
       cardElement.style.opacity = "0.5"; 
 
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = proxiedUrl;
-      document.body.appendChild(iframe);
+      const a = document.createElement('a');
+      a.href = proxiedUrl;
+      document.body.appendChild(a);
+      a.click();
       
       setTimeout(() => {
-        document.body.removeChild(iframe);
-      }, 3000);
+        document.body.removeChild(a);
+      }, 500);
     }
 
     function resetButton() {
@@ -448,4 +458,4 @@
     }
   </script>
 </body>
-</html>
+  </html>
