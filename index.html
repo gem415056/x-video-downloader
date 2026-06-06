@@ -11,14 +11,14 @@
       --text-color: #333333;
       --primary-color: #7293bc; /* 메인 테마색 */
       --button-text: #f3faff; /* 다운로드 버튼 글자색 */
-      --input-bg: #f5f5f5; /* 입력창 배경 */
-      --input-border: #a0a0a0; /* 입력창 테두리 */
+      --input-bg: #f5f5f5; /* 입력창 및 카드창 배경색 (연회색) */
+      --input-border: #a0a0a0; /* 입력창 및 카드창 테두리색 (회색) */
       
-      /* 변경된 카드창 색상 변수 */
-      --card-bg: #e6f4f1; /* 카드 배경색 */
-      --card-border: #7293BC; /* 카드 테두리색 */
-      --color-success: #ba8093; /* 완료 텍스트 색상 */
-      --color-loading: #23496d; /* 다운로드중 텍스트 색상 */
+      /* 배지 색상 정의 */
+      --badge-waiting: #888888; /* 대기중 회색 */
+      --badge-loading: #23496d; /* 다운중 청색 */
+      --badge-success: #ba8093; /* 완료 분홍색 */
+      --badge-text: #f5f5f5; /* 배지 내부의 밝은 회색 글자색 */
     }
     body {
       background-color: var(--bg-color);
@@ -79,20 +79,18 @@
     .clear-btn:active {
       background-color: rgba(114, 147, 188, 0.1);
     }
-    /* 다운로드 버튼 크기 및 패딩 축소, 중앙 정렬 */
     button#downloadBtn {
       display: block;
-      width: fit-content; /* 텍스트 크기에 맞게 조절 */
-      margin: 18px auto 0 auto; /* 중앙 정렬 */
+      width: fit-content;
+      margin: 18px auto 0 auto;
       background-color: var(--primary-color);
       color: var(--button-text);
       border: none;
       border-radius: 20px;
-      padding: 10px 24px; /* 가로세로 패딩 축소 */
+      padding: 10px 24px;
       font-size: 15px;
       font-weight: bold;
       cursor: pointer;
-      transition: opacity 0.2s;
     }
     button#downloadBtn:active {
       opacity: 0.9;
@@ -102,70 +100,83 @@
       color: #ffffff;
       cursor: not-allowed;
     }
+    
+    /* 한 행에 4개씩 자동 정렬되는 그리드 레이아웃 */
     .queue-list {
       margin-top: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr); /* 4열 고정 */
+      gap: 8px; /* 카드간 간격 */
+      width: 100%;
     }
-    /* 카드 디자인 변경 */
+    /* 미니멀한 정사각형 카드 디자인 */
     .card {
-      background-color: var(--card-bg);
-      border: 1px solid var(--card-border);
+      background-color: var(--input-bg);
+      border: 1px solid var(--input-border);
       border-radius: 12px;
-      padding: 12px;
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      box-sizing: border-box;
-    }
-    .thumbnail {
-      width: 80px;
-      height: 80px;
-      border-radius: 8px;
-      object-fit: cover;
-      background-color: #fff;
-      border: 1px solid #cce3f0;
-    }
-    .card-info {
-      flex: 1;
+      padding: 8px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      align-items: center;
+      justify-content: space-between; /* 구성요소 수직 정렬 */
+      aspect-ratio: 1 / 1; /* 가로세로 1:1 비율 유지 */
+      box-sizing: border-box;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
     }
-    .status {
-      font-size: 14px;
-      font-weight: bold;
-      color: #555555;
+    /* 미니멀 카드용 썸네일 박스 */
+    .thumb-box {
+      width: 100%;
+      height: 42%;
+      border-radius: 6px;
+      background-color: #e0e0e0;
+      overflow: hidden;
     }
-    .status.waiting { 
-      color: #666666; 
-    } 
-    /* 다운로드 중 텍스트색 조정 */
-    .status.loading { 
-      color: var(--color-loading); 
-    } 
-    /* 완료 텍스트색 조정 */
-    .status.success { 
-      color: var(--color-success); 
-    } 
-    .status.error { 
-      color: #f4212e; 
+    .thumb-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
     .resolution {
-      font-size: 12px;
-      color: #555555;
+      font-size: 10px;
+      color: #666666;
+      font-weight: bold;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 100%;
     }
-    .retry-btn {
-      background-color: var(--color-success);
-      color: white;
-      border: none;
-      border-radius: 6px;
-      padding: 6px 12px;
-      font-size: 12px;
-      margin-top: 6px;
-      width: fit-content;
-      cursor: pointer;
+    /* 모서리가 둥근 알약 스타일 배지 */
+    .status {
+      font-size: 10px;
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 12px;
+      display: inline-block;
+      width: auto;
+      max-width: 90%;
+      box-sizing: border-box;
+      white-space: nowrap;
+      text-align: center;
+    }
+    .status.waiting { 
+      background-color: var(--badge-waiting);
+      color: var(--badge-text);
+    } 
+    .status.loading { 
+      background-color: var(--badge-loading);
+      color: var(--badge-text);
+    } 
+    .status.success { 
+      background-color: var(--badge-success);
+      color: var(--badge-text);
+    } 
+    .status.error { 
+      background-color: #f4212e;
+      color: #ffffff;
+      font-size: 9px;
+      padding: 4px 6px;
     }
   </style>
 </head>
@@ -223,12 +234,11 @@
       const queue = urls.map((url, index) => {
         const card = document.createElement('div');
         card.className = 'card';
+        card.id = `card-${index}`;
         card.innerHTML = `
-          <div class="thumbnail" id="thumb-${index}"></div>
-          <div class="card-info" id="info-${index}">
-            <div class="status waiting" id="status-${index}">[대기중] 순서를 기다리는 중...</div>
-            <div class="resolution" id="res-${index}">-</div>
-          </div>
+          <div class="thumb-box" id="thumb-${index}"></div>
+          <div class="resolution" id="res-${index}">-</div>
+          <span class="status waiting" id="status-${index}">대기중</span>
         `;
         queueList.appendChild(card);
         return { url, index };
@@ -247,7 +257,7 @@
       const resText = document.getElementById(`res-${index}`);
       const thumbDiv = document.getElementById(`thumb-${index}`);
 
-      statusText.innerText = "[분석중] 링크 우회 분석 중...";
+      statusText.innerText = "분석중";
       statusText.className = "status loading";
 
       try {
@@ -259,27 +269,28 @@
         }
 
         if (result.thumbnail) {
-          thumbDiv.innerHTML = `<img src="${result.thumbnail}" class="thumbnail" alt="썸네일">`;
+          thumbDiv.innerHTML = `<img src="${result.thumbnail}" alt="썸네일">`;
         }
-        resText.innerText = `화질: ${result.resolution}`;
-        statusText.innerText = "[다운로드중] 파일 요청 중...";
+        resText.innerText = result.resolution;
+        statusText.innerText = "다운중";
 
         const proxiedUrl = `/api/proxy?url=${encodeURIComponent(result.videoUrl)}`;
         await downloadFileHelper(proxiedUrl, `X_video_${Date.now()}.mp4`, index);
 
       } catch (error) {
-        statusText.innerText = `[오류] ${error.message}`;
+        // 분석 실패 또는 네트워크 에러 발생 시 처리
+        statusText.innerText = "오류 (클릭)";
         statusText.className = "status error";
       }
     }
 
     async function downloadFileHelper(proxiedUrl, filename, index) {
       const statusText = document.getElementById(`status-${index}`);
-      const cardInfo = document.getElementById(`info-${index}`);
+      const card = document.getElementById(`card-${index}`);
 
       try {
         const fileResponse = await fetch(proxiedUrl);
-        if (!fileResponse.ok) throw new Error("네트워크 연결 시간 초과 또는 서버 응답 실패");
+        if (!fileResponse.ok) throw new Error("서버 응답 실패");
 
         const reader = fileResponse.body.getReader();
         const chunks = [];
@@ -288,9 +299,7 @@
           const { done, value } = await reader.read();
           if (done) break;
           chunks.push(value);
-          
-          // 바를 없앴으므로 간단한 텍스트 카운터로 작동 중임을 표시해 줍니다.
-          statusText.innerText = "[다운로드중] 파일 가져오는 중...";
+          statusText.innerText = "다운중";
         }
 
         const blob = new Blob(chunks, { type: 'video/mp4' });
@@ -304,30 +313,24 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(blobUrl);
 
-        statusText.innerText = "[완료] 기기에 저장 완료";
+        statusText.innerText = "완료!";
         statusText.className = "status success";
 
       } catch (e) {
         console.warn("직접 다운로드 실패:", e);
         
-        statusText.innerText = "[시간초과] 직접 다운로드 실패";
+        statusText.innerText = "오류 (클릭)";
         statusText.className = "status error";
-
-        const btnId = `retry-btn-${index}`;
-        if (!document.getElementById(btnId)) {
-          const retryBtn = document.createElement('button');
-          retryBtn.id = btnId;
-          retryBtn.className = 'retry-btn';
-          retryBtn.innerText = "수동 다운로드 버튼 누르기";
-          retryBtn.onclick = function() {
-            const a = document.createElement('a');
-            a.href = proxiedUrl;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-          };
-          cardInfo.appendChild(retryBtn);
-        }
+        card.style.cursor = "pointer";
+        
+        // 오류가 발생한 카드를 터치(클릭)하면 바로 브라우저 자체 수동 다운로드가 시작되도록 이벤트 주입
+        card.onclick = function() {
+          const a = document.createElement('a');
+          a.href = proxiedUrl;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        };
       }
     }
   </script>
