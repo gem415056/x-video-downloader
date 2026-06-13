@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         SaveTwitter Multi-Paste & Queue Downloader
+// @name         SaveTwitter Multi-Paste & Queue Downloader (Fixed)
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  savetwitter.net multi-line pasting, auto newline, and sequential queue downloading.
+// @version      1.1
+// @description  Robust multi-line pasting, auto newline, and queue downloader
 // @author       User
 // @match        https://savetwitter.net/*
 // @match        https://*.savetwitter.net/*
@@ -13,23 +13,19 @@
 (function() {
     'use strict';
 
-    let inputReplaced = false;
-
-    // 1. 입력창을 Textarea로 교체하는 함수
+    // 1. 입력창 교체 함수
     function replaceInput() {
-        if (inputReplaced) return;
         const oldInput = document.getElementById('s_input');
-        
         if (oldInput && oldInput.tagName === 'INPUT') {
             const textarea = document.createElement('textarea');
             
-            // 기존 input의 모든 속성을 복사
+            // 기존 속성 복사
             for (const attr of oldInput.attributes) {
                 textarea.setAttribute(attr.name, attr.value);
             }
             
-            // 스타일 및 여러 줄 높이 설정 (10줄 정도의 크기 제공)
-            textarea.className = oldInput.className + ' textarea'; // Bulma 프레임워크 호환용 클래스 추가
+            // 스타일 지정 (10줄 정도 높이)
+            textarea.className = oldInput.className + ' textarea';
             textarea.style.height = '180px';
             textarea.style.resize = 'vertical';
             textarea.style.fontFamily = 'inherit';
@@ -37,59 +33,68 @@
             textarea.style.lineHeight = '1.5';
             textarea.style.width = '100%';
             
-            // 원래 위치에 교체 삽입
             oldInput.parentNode.replaceChild(textarea, oldInput);
-            inputReplaced = true;
-            
-            // 클립보드 붙여넣기 시 자동 줄바꿈 처리
-            textarea.addEventListener('paste', (e) => {
-                const pastedText = (e.clipboardData || window.clipboardData).getData('text');
-                if (pastedText) {
-                    const trimmed = pastedText.trim();
-                    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-                        e.preventDefault();
-                        const textToInsert = trimmed + '\n';
-                        
-                        const start = textarea.selectionStart;
-                        const end = textarea.selectionEnd;
-                        const currentVal = textarea.value;
-                        
-                        // 현재 커서 위치에 줄바꿈을 포함하여 삽입
-                        textarea.value = currentVal.substring(0, start) + textToInsert + currentVal.substring(end);
-                        
-                        // 커서를 새로 추가된 줄의 맨 앞으로 이동
-                        const newCursorPos = start + textToInsert.length;
-                        textarea.selectionStart = textarea.selectionEnd = newCursorPos;
-                        
-                        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                }
-            });
-            
-            // 다운로드 버튼 클릭 시 다중 링크인 경우 대기열에 저장하는 이벤트 가로채기
-            const searchBtn = document.querySelector('.btn-red');
-            if (searchBtn) {
-                searchBtn.addEventListener('click', (e) => {
-                    const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                    
-                    // 입력된 링크가 여러 개인 경우에만 대기열로 동작
-                    if (lines.length > 1) {
-                        const firstUrl = lines[0];
-                        const queue = lines.slice(1);
-                        
-                        // 대기열 세션에 남은 링크들 저장
-                        sessionStorage.setItem('savetwitter_queue', JSON.stringify(queue));
-                        
-                        // 첫 번째 링크만 입력창에 다시 대입하여 기존 다운로드 함수가 실행되게 유도
-                        textarea.value = firstUrl;
-                        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                }, true); // capturing 단계에서 이벤트를 선점하여 가로챕니다.
-            }
         }
     }
 
-    // 2. 결과 페이지에서 대기열 확인 및 다음 버튼(SVG) 표시 함수
+    // 2. [수정됨] 이벤트 위임(Event Delegation)을 통한 붙여넣기 감지
+    // 페이지가 갱신되어도 이 리스너는 유실되지 않으며, 모든 붙여넣기 내용 뒤에 줄바꿈을 붙여 커서를 아래로 내립니다.
+    document.addEventListener('paste', (e) => {
+        const textarea = e.target;
+        if (textarea && textarea.id === 's_input') {
+            const pastedText = (e.clipboardData || window.clipboardData || e.originalEvent?.clipboardData)?.getData('text');
+            if (pastedText) {
+                // 브라우저의 기본 붙여넣기 동작을 방지하고 커서 제어
+                e.preventDefault();
+                
+                const trimmed = pastedText.trim();
+                const textToInsert = trimmed + '\n';
+                
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const currentVal = textarea.value;
+                
+                // 텍스트 및 개행(\n) 삽입
+                textarea.value = currentVal.substring(0, start) + textToInsert + currentVal.substring(end);
+                
+                // 다음 줄의 맨 앞으로 커서 강제 이동
+                const newCursorPos = start + textToInsert.length;
+                textarea.selectionStart = textarea.selectionEnd = newCursorPos;
+                
+                // 사이트 내부 탐색 스크립트에 값 변경 사실을 알림
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                
+                // 입력창 포커스 계속 유지
+                textarea.focus();
+            }
+        }
+    }, true); // capturing 단계에서 선제 조치하여 타 스크립트와의 충돌 방지
+
+    // 3. 다운로드 버튼 클릭 시 다중 링크인 경우 대기열에 저장 (이벤트 위임)
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-red');
+        if (btn) {
+            const textarea = document.getElementById('s_input');
+            if (textarea && textarea.tagName === 'TEXTAREA') {
+                const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                
+                // 줄바꿈으로 구분된 링크가 2개 이상일 때만 동작
+                if (lines.length > 1) {
+                    const firstUrl = lines[0];
+                    const queue = lines.slice(1);
+                    
+                    sessionStorage.setItem('savetwitter_queue', JSON.stringify(queue));
+                    
+                    textarea.value = firstUrl;
+                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                    textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        }
+    }, true);
+
+    // 4. 대기열 다음 단계로 넘어가는 화살표 버튼 추가 및 제어
     function checkResultPage() {
         const moreVideoBtn = document.querySelector('.more-video');
         const queueStr = sessionStorage.getItem('savetwitter_queue');
@@ -97,13 +102,10 @@
         if (moreVideoBtn && queueStr) {
             const queue = JSON.parse(queueStr);
             if (queue && queue.length > 0) {
-                // 이미 버튼이 생성되어 있다면 생략
                 if (!document.getElementById('savetwitter-next-btn')) {
                     const nextBtn = document.createElement('button');
                     nextBtn.id = 'savetwitter-next-btn';
-                    
-                    // 스타일 매칭 및 SVG 화살표 삽입
-                    nextBtn.className = 'button is-success is-fullwidth'; // 시각적 구분을 위해 초록색 버튼 적용
+                    nextBtn.className = 'button is-success is-fullwidth';
                     nextBtn.style.marginTop = '10px';
                     nextBtn.style.display = 'flex';
                     nextBtn.style.alignItems = 'center';
@@ -120,12 +122,10 @@
                         </svg>
                     `;
                     
-                    // 다음 버튼 클릭 시 플래그를 설정하고 메인 페이지로 이동
                     nextBtn.addEventListener('click', (e) => {
                         e.preventDefault();
                         sessionStorage.setItem('savetwitter_auto_run', 'true');
                         
-                        // 사이트 자체 라우팅을 이용하기 위해 기존 '더 많은 동영상 다운로드' 클릭 유도
                         const originalBtn = document.querySelector('.more-video');
                         if (originalBtn) {
                             originalBtn.click();
@@ -134,14 +134,13 @@
                         }
                     });
                     
-                    // '더 많은 동영상 다운로드' 버튼의 바로 아래에 추가
                     moreVideoBtn.parentNode.insertBefore(nextBtn, moreVideoBtn.nextSibling);
                 }
             }
         }
     }
 
-    // 3. 메인 페이지로 돌아왔을 때 대기열이 있을 경우 자동 분석 실행 함수
+    // 5. 대기열 자동 실행
     function runAutoQueue() {
         const autoRun = sessionStorage.getItem('savetwitter_auto_run');
         const queueStr = sessionStorage.getItem('savetwitter_queue');
@@ -149,8 +148,6 @@
         if (autoRun === 'true' && queueStr) {
             const queue = JSON.parse(queueStr);
             if (queue && queue.length > 0) {
-                
-                // 요소들이 완전히 불러와질 때까지 대기
                 const checkExist = setInterval(() => {
                     const input = document.getElementById('s_input');
                     const btn = document.querySelector('.btn-red');
@@ -158,22 +155,21 @@
                     if (input && btn) {
                         clearInterval(checkExist);
                         
-                        const nextUrl = queue.shift(); // 대기열 맨 앞의 링크 꺼내기
+                        const nextUrl = queue.shift();
                         sessionStorage.setItem('savetwitter_queue', JSON.stringify(queue));
-                        sessionStorage.removeItem('savetwitter_auto_run'); // 일시적인 실행 루프 방지
+                        sessionStorage.removeItem('savetwitter_auto_run');
                         
-                        // 입력창 교체가 아직 안 되었다면 수행 후 값을 대입
                         if (input.tagName === 'INPUT') {
                             replaceInput();
                         }
                         
-                        const activeInput = document.getElementById('s_input');
-                        if (activeInput) {
-                            activeInput.value = nextUrl;
-                            activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        const textarea = document.getElementById('s_input');
+                        if (textarea) {
+                            textarea.value = nextUrl;
+                            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                            textarea.dispatchEvent(new Event('change', { bubbles: true }));
                         }
                         
-                        // 사이트 내부 탐색 함수가 안정적으로 동작하도록 미세한 딜레이 후 클릭 실행
                         setTimeout(() => {
                             btn.click();
                         }, 500);
@@ -185,16 +181,15 @@
         }
     }
 
-    // 초기 실행 및 지속적인 DOM 변경 감지 (SPA 및 동적 UI 대응)
+    // 초기 및 지속 실행 감지 루프
     runAutoQueue();
     
     setInterval(() => {
         const currentInput = document.getElementById('s_input');
         if (currentInput && currentInput.tagName === 'INPUT') {
-            inputReplaced = false; // 페이지가 완전히 새로고침되지 않고 갱신되었을 경우 플래그 초기화
             replaceInput();
         }
         checkResultPage();
-    }, 500);
+    }, 300);
 
 })();
