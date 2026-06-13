@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         SaveTwitter Multi-Paste & Queue Downloader (Fixed)
+// @name         SaveTwitter Multi-Paste & Queue Downloader (Refined)
 // @namespace    http://tampermonkey.net/
-// @version      1.1
-// @description  Robust multi-line pasting, auto newline, and queue downloader
+// @version      1.2
+// @description  Robust multi-line pasting, auto newline matching your original index.html logic, and queue downloader
 // @author       User
 // @match        https://savetwitter.net/*
 // @match        https://*.savetwitter.net/*
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    // 1. 입력창 교체 함수
+    // 1. 입력창을 고정된 10줄 높이의 Textarea로 교체하는 함수
     function replaceInput() {
         const oldInput = document.getElementById('s_input');
         if (oldInput && oldInput.tagName === 'INPUT') {
@@ -24,52 +24,39 @@
                 textarea.setAttribute(attr.name, attr.value);
             }
             
-            // 스타일 지정 (10줄 정도 높이)
+            // 10줄 정도의 높이(약 200px)로 고정하고 세로 스크롤 허용
             textarea.className = oldInput.className + ' textarea';
-            textarea.style.height = '180px';
-            textarea.style.resize = 'vertical';
+            textarea.style.height = '200px';
+            textarea.style.resize = 'none'; // 크기 조절 비활성화 (고정)
             textarea.style.fontFamily = 'inherit';
             textarea.style.padding = '12px';
             textarea.style.lineHeight = '1.5';
             textarea.style.width = '100%';
+            textarea.style.overflowY = 'auto'; // 내용이 많아지면 스크롤바 표시
             
             oldInput.parentNode.replaceChild(textarea, oldInput);
         }
     }
 
-    // 2. [수정됨] 이벤트 위임(Event Delegation)을 통한 붙여넣기 감지
-    // 페이지가 갱신되어도 이 리스너는 유실되지 않으며, 모든 붙여넣기 내용 뒤에 줄바꿈을 붙여 커서를 아래로 내립니다.
-    document.addEventListener('paste', (e) => {
-        const textarea = e.target;
-        if (textarea && textarea.id === 's_input') {
-            const pastedText = (e.clipboardData || window.clipboardData || e.originalEvent?.clipboardData)?.getData('text');
-            if (pastedText) {
-                // 브라우저의 기본 붙여넣기 동작을 방지하고 커서 제어
-                e.preventDefault();
+    // 2. [핵심 개선] 보내주신 HTML의 실시간 정규식 감지 및 자동 엔터 메커니즘 반영
+    document.addEventListener('input', (e) => {
+        const tx = e.target;
+        if (tx && tx.id === 's_input' && tx.tagName === 'TEXTAREA') {
+            const val = tx.value;
+            // 보내주신 HTML 파일 내 정규표현식 적용
+            const twitterRegex = /https?:\/\/(twitter|x)\.com\/[a-zA-Z0-9_]+\/status\/\d+[^ \n]*$/;
+            
+            if (twitterRegex.test(val)) {
+                // 링크가 온전하게 인식되면 즉시 끝에 줄바꿈 추가
+                tx.value = val + '\n';
+                tx.scrollTop = tx.scrollHeight; // 다음 작성을 위해 스크롤을 맨 아래로 내림
                 
-                const trimmed = pastedText.trim();
-                const textToInsert = trimmed + '\n';
-                
-                const start = textarea.selectionStart;
-                const end = textarea.selectionEnd;
-                const currentVal = textarea.value;
-                
-                // 텍스트 및 개행(\n) 삽입
-                textarea.value = currentVal.substring(0, start) + textToInsert + currentVal.substring(end);
-                
-                // 다음 줄의 맨 앞으로 커서 강제 이동
-                const newCursorPos = start + textToInsert.length;
-                textarea.selectionStart = textarea.selectionEnd = newCursorPos;
-                
-                // 사이트 내부 탐색 스크립트에 값 변경 사실을 알림
-                textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                textarea.dispatchEvent(new Event('change', { bubbles: true }));
-                
-                // 입력창 포커스 계속 유지
-                textarea.focus();
+                // 프레임워크 연동을 위한 이벤트 강제 전파
+                tx.dispatchEvent(new Event('input', { bubbles: true }));
+                tx.dispatchEvent(new Event('change', { bubbles: true }));
             }
         }
-    }, true); // capturing 단계에서 선제 조치하여 타 스크립트와의 충돌 방지
+    }, true);
 
     // 3. 다운로드 버튼 클릭 시 다중 링크인 경우 대기열에 저장 (이벤트 위임)
     document.addEventListener('click', (e) => {
