@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         SaveTwitter Multi-Paste & Queue Downloader (Dark Style Match)
+// @name         SaveTwitter Multi-Paste & Queue Downloader (Perfect Match)
 // @namespace    http://tampermonkey.net/
-// @version      1.4
-// @description  Multi-line pasting, auto newline, and queue downloader with dark style matching
+// @version      1.5
+// @description  Matches height and tag of the original button to prevent layout inconsistencies
 // @author       User
 // @match        https://savetwitter.net/*
 // @match        https://*.savetwitter.net/*
@@ -90,13 +90,15 @@
             const queue = JSON.parse(queueStr);
             if (queue && queue.length > 0) {
                 if (!document.getElementById('savetwitter-next-btn')) {
-                    const nextBtn = document.createElement('button');
+                    // [수정] button 태그 대신, 원래 버튼과 동일하게 a 태그를 생성합니다.
+                    const nextBtn = document.createElement('a');
                     nextBtn.id = 'savetwitter-next-btn';
+                    nextBtn.href = 'javascript:void(0);'; // 링크 기능을 자바스크립트로 대체
                     
-                    // 'is-dark'와 'is-fullwidth'를 적용하여 원래 버튼과 완벽히 일치시킵니다.
+                    // 기존 어두운 풀사이즈 버튼 클래스 부여
                     nextBtn.className = 'button is-dark is-fullwidth';
                     
-                    // 위치와 여백만 스타일로 제어하고, 색상은 클래스 고유 값을 따릅니다.
+                    // 수동 패딩 설정을 모두 삭제하여 원래 버튼 스타일을 온전히 상속받게 만듭니다.
                     nextBtn.style.marginTop = '10px';
                     nextBtn.style.display = 'inline-flex';
                     nextBtn.style.alignItems = 'center';
@@ -105,14 +107,7 @@
                     nextBtn.style.fontWeight = 'bold';
                     nextBtn.style.cursor = 'pointer';
                     
-                    // 안쪽 여백 일치
-                    nextBtn.style.paddingBottom = 'calc(.5em - 1px)';
-                    nextBtn.style.paddingLeft = '1em';
-                    nextBtn.style.paddingRight = '1em';
-                    nextBtn.style.paddingTop = 'calc(.5em - 1px)';
-                    nextBtn.style.whiteSpace = 'nowrap';
-                    
-                    // 텍스트 및 SVG 주입 (글자색에 맞춰 SVG 선 색상도 자동으로 적용됩니다)
+                    // 텍스트 및 SVG 주입
                     nextBtn.innerHTML = `
                         <span>다음 동영상 분석 (남은 큐: ${queue.length}개)</span>
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;">
