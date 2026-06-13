@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         SaveTwitter Multi-Paste & Queue Downloader (Style Matched)
+// @name         SaveTwitter Multi-Paste & Queue Downloader (Dark Style Match)
 // @namespace    http://tampermonkey.net/
-// @version      1.3
-// @description  Robust multi-line pasting, auto newline, and queue downloader with matched button style
+// @version      1.4
+// @description  Multi-line pasting, auto newline, and queue downloader with dark style matching
 // @author       User
 // @match        https://savetwitter.net/*
 // @match        https://*.savetwitter.net/*
@@ -93,30 +93,26 @@
                     const nextBtn = document.createElement('button');
                     nextBtn.id = 'savetwitter-next-btn';
                     
-                    // 기본 Bulma 버튼 클래스 부여 (is-fullwidth 추가로 기존 위치 형태에 맞춤)
-                    nextBtn.className = 'button is-fullwidth';
+                    // 'is-dark'와 'is-fullwidth'를 적용하여 원래 버튼과 완벽히 일치시킵니다.
+                    nextBtn.className = 'button is-dark is-fullwidth';
                     
-                    // 요청하신 CSS 양식을 자바스크립트 인라인 스타일에 반영
+                    // 위치와 여백만 스타일로 제어하고, 색상은 클래스 고유 값을 따릅니다.
                     nextBtn.style.marginTop = '10px';
-                    nextBtn.style.backgroundColor = '#fff';
-                    nextBtn.style.borderColor = '#dbdbdb';
-                    nextBtn.style.borderWidth = '1px';
-                    nextBtn.style.borderStyle = 'solid';
-                    nextBtn.style.color = '#363636';
-                    nextBtn.style.cursor = 'pointer';
+                    nextBtn.style.display = 'inline-flex';
+                    nextBtn.style.alignItems = 'center';
                     nextBtn.style.justifyContent = 'center';
+                    nextBtn.style.gap = '8px';
+                    nextBtn.style.fontWeight = 'bold';
+                    nextBtn.style.cursor = 'pointer';
+                    
+                    // 안쪽 여백 일치
                     nextBtn.style.paddingBottom = 'calc(.5em - 1px)';
                     nextBtn.style.paddingLeft = '1em';
                     nextBtn.style.paddingRight = '1em';
                     nextBtn.style.paddingTop = 'calc(.5em - 1px)';
-                    nextBtn.style.textAlign = 'center';
                     nextBtn.style.whiteSpace = 'nowrap';
-                    nextBtn.style.display = 'inline-flex';
-                    nextBtn.style.alignItems = 'center';
-                    nextBtn.style.gap = '8px';
-                    nextBtn.style.fontWeight = 'bold';
                     
-                    // 텍스트 및 SVG 주입 (부모 글자색인 #363636을 물려받도록 currentColor 설정)
+                    // 텍스트 및 SVG 주입 (글자색에 맞춰 SVG 선 색상도 자동으로 적용됩니다)
                     nextBtn.innerHTML = `
                         <span>다음 동영상 분석 (남은 큐: ${queue.length}개)</span>
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle;">
