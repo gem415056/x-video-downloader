@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         SaveTwitter Multi-Paste & Queue Downloader (Manual Reset)
+// @name         SaveTwitter Multi-Paste & Queue Downloader (Fail-Safe)
 // @namespace    http://tampermonkey.net/
-// @version      1.9
-// @description  Adds a manual reset/finish button on the last item of the queue
+// @version      2.0
+// @description  Prevents queue loss on manual rescue click and optimizes auto-submit timing
 // @author       User
 // @match        https://savetwitter.net/*
 // @match        https://*.savetwitter.net/*
@@ -76,23 +76,40 @@
             if (textarea && textarea.tagName === 'TEXTAREA') {
                 const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
                 
-                // 사용자의 직접적인 마우스 클릭(isTrusted: true)일 때만 작동하여 자동화 루프 간섭 배제
+                // 사용자가 마우스로 직접 누른 실제 클릭(isTrusted: true)일 때만 작동
                 if (e.isTrusted) {
                     if (lines.length > 1) {
                         const firstUrl = lines[0];
                         const queue = lines.slice(1);
                         
-                        // 대기열 및 전체 수량(N) 기록 저장
+                        // 대기열, 전체 수량, 현재 실행 중인 URL 저장
                         sessionStorage.setItem('savetwitter_queue', JSON.stringify(queue));
                         sessionStorage.setItem('savetwitter_total', lines.length.toString());
+                        sessionStorage.setItem('savetwitter_current_url', firstUrl);
                         
                         textarea.value = firstUrl;
                         textarea.dispatchEvent(new Event('input', { bubbles: true }));
                         textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else if (lines.length === 1) {
+                        // 사용자가 1개의 주소 상태에서 수동 클릭을 한 경우
+                        const currentInputUrl = lines[0];
+                        const activeUrl = sessionStorage.getItem('savetwitter_current_url');
+                        
+                        // [보호막 추가] 입력창 주소가 현재 대기열에서 자동으로 밀어넣은 주소와 일치한다면,
+                        // 자동 엔터가 실패해 사용자가 수동 구조 클릭을 한 것으로 간주하고 큐를 지우지 않고 보존합니다.
+                        if (currentInputUrl === activeUrl) {
+                            // 대기열 무사히 보존 (아무것도 하지 않음)
+                        } else {
+                            // 사용자가 직접 완전히 다른 새로운 단일 주소를 쳐서 다운로드하려는 경우 이전 큐 정리
+                            sessionStorage.removeItem('savetwitter_queue');
+                            sessionStorage.removeItem('savetwitter_total');
+                            sessionStorage.removeItem('savetwitter_current_url');
+                        }
                     } else {
-                        // 사용자가 직접 '다운로드'를 새 단일 링크로 진행하는 경우 기존 세션 클리어
+                        // 입력창이 아예 비어있다면 세션 클리어
                         sessionStorage.removeItem('savetwitter_queue');
                         sessionStorage.removeItem('savetwitter_total');
+                        sessionStorage.removeItem('savetwitter_current_url');
                     }
                 }
             }
@@ -115,12 +132,13 @@
                     
                     nextBtn.className = 'button is-dark is-fullwidth';
                     
-                    // 레이아웃 스크롤 방지 스타일 [1]
+                    // 위치와 부모 영역 제한만 스타일로 제어 (가로 스크롤 방지) [1]
                     nextBtn.style.marginTop = '10px';
-                    nextBtn.style.boxSizing = 'border-box'; // 초과 방지 [1]
-                    nextBtn.style.maxWidth = '100%'; // 초과 방지 [1]
+                    nextBtn.style.boxSizing = 'border-box'; // 패딩 및 테두리를 너비 계산에 포함시켜 초과 방지 [1]
+                    nextBtn.style.maxWidth = '100%'; // 화면 밖으로 넘침 방지 [1]
                     nextBtn.style.cursor = 'pointer';
                     
+                    // 진행도 계산 ( n / N )
                     const total = parseInt(totalStr, 10) || 1;
                     
                     // Case A: 대기열이 아직 남아있을 경우 (다음 분석 버튼 표시)
@@ -158,10 +176,11 @@
                         
                         nextBtn.addEventListener('click', (e) => {
                             e.preventDefault();
-                            // 수동 버튼 클릭 시 세션 내부를 완전하게 초기화하고 메인으로 이동 [1]
+                            // 세션 내부를 완전하게 초기화하고 메인으로 이동 [1]
                             sessionStorage.removeItem('savetwitter_queue');
                             sessionStorage.removeItem('savetwitter_total');
                             sessionStorage.removeItem('savetwitter_auto_run');
+                            sessionStorage.removeItem('savetwitter_current_url');
                             
                             const originalBtn = document.querySelector('.more-video');
                             if (originalBtn) {
@@ -190,14 +209,17 @@
                     const input = document.getElementById('s_input');
                     const btn = document.querySelector('.btn-red');
                     
-                    if (input && btn) {
+                    // [대기 타이밍 튜닝] 웹사이트 고유 분석 함수가 정의되었고, 클라우드플레어 락이 해제되어 작동 가능한 상태인지 동시 검증
+                    const isJsReady = typeof window.ksearchvideo === 'function';
+                    const isCfReady = typeof window.__cfRLUnblockHandlers === 'undefined' || window.__cfRLUnblockHandlers;
+                    
+                    if (input && btn && isJsReady && isCfReady) {
                         clearInterval(checkExist);
                         
                         const nextUrl = queue.shift();
                         
-                        // [수정] 마지막 항목을 실행하더라도 큐가 완전히 끝난 것은 아니므로(결과 화면을 보아야 하므로)
-                        // 임시로 빈 배열 '[]' 상태를 세션에 유지시켜 줍니다.
                         sessionStorage.setItem('savetwitter_queue', JSON.stringify(queue));
+                        sessionStorage.setItem('savetwitter_current_url', nextUrl); // 현재 수동 복구에 대비해 실행할 URL 임시 보존
                         sessionStorage.removeItem('savetwitter_auto_run');
                         
                         if (input.tagName === 'INPUT') {
@@ -211,12 +233,19 @@
                             textarea.dispatchEvent(new Event('change', { bubbles: true }));
                         }
                         
+                        // 값 주입 직후 바인딩 전파가 완전히 처리되도록 0.5초 대기 후 안전한 클릭 수행
                         setTimeout(() => {
-                            btn.click(); // 가상 클릭은 세션 제거를 유발하지 않습니다.
+                            btn.click();
                         }, 500);
                     }
                 }, 100);
             }
+        } else {
+            // 자동 실행 세션이 아니라면 메모리 오염 방지를 위해 세션 정리
+            sessionStorage.removeItem('savetwitter_auto_run');
+            sessionStorage.removeItem('savetwitter_queue');
+            sessionStorage.removeItem('savetwitter_total');
+            sessionStorage.removeItem('savetwitter_current_url');
         }
     }
 
